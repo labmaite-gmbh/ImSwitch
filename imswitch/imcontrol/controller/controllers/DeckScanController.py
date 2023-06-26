@@ -60,9 +60,9 @@ class DeckScanController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckScanController")
         self.objective_radius = _objectiveRadius
         ot_info: OpentronsDeckInfo = self._setupInfo.deck["OpentronsDeck"]
-        deck_layout = json.load(open(ot_info.deck_file, "r"))
-        self.deck_definition = DeckConfig(deck_layout, ot_info.labwares)
-        self.translate_units = self._setupInfo.deck["OpentronsDeck"].translate_units
+        deck_layout = json.load(open(ot_info["deck_file"], "r"))
+        self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
+        self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
         # Init desk and labware
         self.initialize_positioners()
@@ -197,6 +197,7 @@ class DeckScanController(LiveUpdatedController):
         self.isScanrunning = True
         self.ScanThread = threading.Thread(target=self.takeTimelapseThread, args=(tperiod, positions_list,),
                                            daemon=True)
+        self.__logger.debug("Starting Thread: takeTimelapse().")
         self.ScanThread.start()
 
     def takeTimelapseThread(self, tperiod=1, positions_list=[]):
@@ -222,20 +223,21 @@ class DeckScanController(LiveUpdatedController):
                 # Scan queue
                 self.scan_queue = self.get_scan_list_queue()
                 try:
-                    # want to do autofocus?
-                    autofocusParams = self._widget.getAutofocusValues()
-                    if self._widget.isAutofocus() and np.mod(self.nRounds, int(autofocusParams['valuePeriod'])) == 0:
-                        self._widget.setNImages("Autofocusing...")
-                        if self.nRounds == 0:
-                            self.z_focus = float(autofocusParams["valueInitial"])
-                        else:
-                            autofocusParams["valueInitial"] = self.z_focus
-                        self.doAutofocus(autofocusParams)
+                    # want to do autofocus? -> No!
+                    # if False:
+                    #     autofocusParams = self._widget.getAutofocusValues() or None
+                    #     if self._widget.isAutofocus() and np.mod(self.nRounds, int(autofocusParams['valuePeriod'])) == 0:
+                    #         self._widget.setNImages("Autofocusing...")
+                    #         if self.nRounds == 0:
+                    #             self.z_focus = float(autofocusParams["valueInitial"])
+                    #         else:
+                    #             autofocusParams["valueInitial"] = self.z_focus
+                    #         self.doAutofocus(autofocusParams)
 
                     if self.LEDValue > 0:
                         timestamp_ = str(self.nRounds) + strfdelta(datetime.now() - self.timeStart,
                                                                    "_d{days}h{hours}m{minutes}s{seconds}")
-                        self.z_focus = float(autofocusParams["valueInitial"])
+                        self.z_focus = float(self._widget.autofocusInitial.text())
                         illu_mode = "Brightfield"
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
 
@@ -256,7 +258,8 @@ class DeckScanController(LiveUpdatedController):
                     # close the controller ina nice way
             self.positioner.move(value=0, axis="Z", is_blocking=True)
             # pause to not overwhelm the CPU
-            time.sleep(0.1)
+        time.sleep(0.1)
+        self.stopScan()
 
     def switchOnIllumination(self, intensity):
         self.__logger.info(f"Turning on Leds: {intensity} A")
@@ -265,10 +268,10 @@ class DeckScanController(LiveUpdatedController):
             self.leds[0].setEnabled(True)
         elif self.led_matrixs:
             self.led_matrixs[0].setAll(state=(1, 1, 1))
-            time.sleep(0.1)
-            for LEDid in [12, 13, 14]:  # TODO: these LEDs generate artifacts
-                self.led_matrixs[0].setLEDSingle(indexled=int(LEDid), state=0)
-                time.sleep(0.1)
+            # time.sleep(0.1)
+            # for LEDid in [12, 13, 14]:  # TODO: these LEDs generate artifacts
+            #     self.led_matrixs[0].setLEDSingle(indexled=int(LEDid), state=0)
+            #     time.sleep(0.1)
         time.sleep(self.tUnshake * 3)  # unshake + Light
 
     def switchOffIllumination(self):
@@ -341,7 +344,7 @@ class DeckScanController(LiveUpdatedController):
 
     def take_z_stack_at_position(self, current_position: Point, intensity):
         self.positioner.move(value=current_position, axis="XYZ", is_absolute=True, is_blocking=True)
-        time.sleep(self.tUnshake)
+        time.sleep(self.tUnshake*3)
         # perform a z-stack from z_focus
         self.zStackDepth = self.zStackMax - self.zStackMin
         # for zn, iZ in enumerate(np.arange(self.zStackMin, self.zStackMax, self.zStackStep)):
@@ -393,8 +396,9 @@ class DeckScanController(LiveUpdatedController):
             self.__logger.info(f"Currently scanning row: {self.current_scanning_row}")
 
             if self.zStackEnabled:
-                for z_pos, frame in self.take_z_stack_at_position(current_pos, intensity):  # Will yield image and iZ
-                    img_info.z_focus = z_pos
+                for z_index, (z_pos, frame) in enumerate(self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
+                    # img_info.z_focus = z_pos
+                    img_info.z_focus = z_index # TODO: preferred by Biology -> slice number, not absolute position
                     self.save_image(frame, img_info)
                     if img_info.illu_mode == "Brightfield":  # store frames for displaying
                         self.LastStackLED.append(frame.copy())

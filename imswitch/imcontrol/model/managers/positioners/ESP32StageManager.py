@@ -139,7 +139,9 @@ class ESP32StageManager(PositionerManager):
         if positionerInfo.managerProperties.get ('axisOrder') is not None:
             self.axisOrder = positionerInfo.managerProperties['axisOrder']
         else:
-            self.axisOrder = [0,1,2,3]
+            self.axisOrder = [0, 2, 1, 3]
+        # swap axes eventually
+        self.setAxisOrder(order=self.axisOrder)
 
         if positionerInfo.managerProperties.get("isCoreXY") is not None:
             self.isCoreXY = positionerInfo.managerProperties["isCoreXY"]
@@ -162,8 +164,7 @@ class ESP32StageManager(PositionerManager):
                             "Y": 40000,
                             "Z": 40000,
                             "T": 40000}
-        # swap axes eventually
-        self.setAxisOrder(order=self.axisOrder)
+
 
         # choose if we have a coreXY geometry or not
         self._motor.setIsCoreXY(isCoreXY = self.isCoreXY)
@@ -286,7 +287,11 @@ class ESP32StageManager(PositionerManager):
         except:
             allPositions = [0,0,0,0]
 
-        return {"X": allPositions[1], "Y": allPositions[2], "Z": allPositions[3], "T": allPositions[0]}
+        return {"X": allPositions[2], "Y": allPositions[1], "Z": allPositions[3], "T": allPositions[0]}
+
+    def get_position(self):
+        pos = self.getPosition()
+        return pos["X"], pos["Y"], pos["Z"]
 
     def forceStop(self, axis):
         if axis=="X":

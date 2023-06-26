@@ -65,7 +65,7 @@ class DeckScanWidget(NapariHybridWidget):
 
         self.grid.addWidget(self.scan_list,12, 0, 1, 4)
         self.grid.addWidget(self.buttonOpen,11, 0, 1, 1)
-        self.grid.addWidget(self.buttonSave,11, 1, 1, 1)
+        # self.grid.addWidget(self.buttonSave,11, 1, 1, 1) # DO not display save here
 
 
     # https://stackoverflow.com/questions/12608835/writing-a-qtablewidget-to-a-csv-or-xls
@@ -124,14 +124,14 @@ class DeckScanWidget(NapariHybridWidget):
         # initialize all GUI elements
         # period
         self.ScanLabelTimePeriod = QtWidgets.QLabel('Period T (s):') # TODO: change for a h:m:s Widget
-        self.ScanValueTimePeriod = QtWidgets.QLineEdit('180')
+        self.ScanValueTimePeriod = QtWidgets.QLineEdit('0')
         # duration
         self.ScanLabelTimeDuration = QtWidgets.QLabel('N Rounds:')
-        self.ScanValueTimeDuration = QtWidgets.QLineEdit('2')
+        self.ScanValueTimeDuration = QtWidgets.QLineEdit('1')
         # z-stack
-        self.ScanLabelZStack = QtWidgets.QLabel('Z-Stack (min,max,n_slices):')
+        self.ScanLabelZStack = QtWidgets.QLabel('Z-Stack (sample height [um],n_slices):')
         self.ScanValueZmin = QtWidgets.QLineEdit('0')
-        self.ScanValueZmax = QtWidgets.QLineEdit('0.5')
+        self.ScanValueZmax = QtWidgets.QLineEdit('0')
         self.ScanValueZsteps = QtWidgets.QLineEdit('5')
         self.ScanDoZStack = QtWidgets.QCheckBox('Perform Z-Stack')
         self.ScanDoZStack.setCheckable(True)
@@ -182,7 +182,7 @@ class DeckScanWidget(NapariHybridWidget):
         self.grid.addWidget(self.ScanValueTimeDuration, 0, 3, 1, 1)
         # z-stack
         self.grid.addWidget(self.ScanLabelZStack, 1, 0, 1, 1)
-        self.grid.addWidget(self.ScanValueZmin, 1, 1, 1, 1)
+        # self.grid.addWidget(self.ScanValueZmin, 1, 1, 1, 1) # Just use sample height
         self.grid.addWidget(self.ScanValueZmax, 1, 2, 1, 1)
         self.grid.addWidget(self.ScanValueZsteps, 1, 3, 1, 1)
         self.grid.addWidget(self.LabelLED, 6, 0, 1, 1)
@@ -194,13 +194,13 @@ class DeckScanWidget(NapariHybridWidget):
         self.grid.addWidget(self.ScanDoZStack, 7, 3, 1, 1)
         # autofocus
         self.grid.addWidget(self.autofocusLabel, 8, 0, 1, 1)
-        self.grid.addWidget(self.autofocusRange, 8, 1, 1, 1)
-        self.grid.addWidget(self.autofocusSteps, 8, 2, 1, 1)
-        self.grid.addWidget(self.autofocusPeriod, 8, 3, 1, 1)
+        # self.grid.addWidget(self.autofocusRange, 8, 1, 1, 1) # Do not show for now. We don't use AF yet
+        # self.grid.addWidget(self.autofocusSteps, 8, 2, 1, 1)
+        # self.grid.addWidget(self.autofocusPeriod, 8, 3, 1, 1)
         self.grid.addWidget(self.autofocusInitial, 9, 1, 1, 1)
-        self.grid.addWidget(self.autofocusSelectionLabel, 9, 2, 1, 1)
+        # self.grid.addWidget(self.autofocusSelectionLabel, 9, 2, 1, 1)
         self.grid.addWidget(self.autofocusInitialZLabel, 9, 0, 1, 1)
-        self.grid.addWidget(self.autofocusLED1Checkbox, 9, 3, 1, 1)
+        # self.grid.addWidget(self.autofocusLED1Checkbox, 9, 3, 1, 1)
         # start stop
         self.grid.addWidget(self.ScanStartButton, 10, 0, 1, 1)
         self.grid.addWidget(self.ScanStopButton, 10, 1, 1, 1)
