@@ -156,7 +156,7 @@ class ESP32StageManager(PositionerManager):
         if positionerInfo.managerProperties.get('enableauto') is not None:
             self.enableauto = positionerInfo.managerProperties['enableauto']
         else:
-            self.enableauto = True
+            self.enableauto = False
         self.enalbeMotors(enable=self.is_enabled, enableauto=self.enableauto)
 
         # acceleration
