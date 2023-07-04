@@ -37,7 +37,7 @@ class ImageI(pydantic.BaseModel):
 
 @dataclasses.dataclass
 class ImageInfo:
-    slot: str
+    slot: Optional[str]
     well: str
     offset: Tuple[float, float]
     z_focus: float
@@ -49,7 +49,10 @@ class ImageInfo:
     def get_filename(self):
         # TODO: fix hardcode in self.position_idx
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
-        return f"{self.slot}_{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
+        if self.slot is None:
+            return f"{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
+        else:
+            return f"{self.slot}_{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
 
 
 class DeckScanController(LiveUpdatedController):
@@ -394,6 +397,7 @@ class DeckScanController(LiveUpdatedController):
             slot, well, offset, z_focus, current_pos = self.get_current_scan_row()
             # TODO: avoid this:
             current_pos = current_pos + Point(0, 0, self.z_focus + z_focus - current_pos.z) # Z-position calculated with z_focus column and self.z_focus
+
 
             img_info = ImageInfo(slot, well, offset, z_focus, current_pos, illu_mode=illuMode,
                                  position_idx=image_index, timestamp=timestamp)  # TODO: avoid hardcoded position_idx
