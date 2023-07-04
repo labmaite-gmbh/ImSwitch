@@ -21,12 +21,15 @@ class ViewWidget(Widget):
         self.gridButton.setCheckable(True)
         self.gridButton.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Expanding)
+        # self.gridButton.setMaximumHeight(60)
 
         # Crosshair
         self.crosshairButton = guitools.BetterPushButton('Crosshair')
         self.crosshairButton.setCheckable(True)
         self.crosshairButton.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Expanding)
+        # self.crosshairButton.setMaximumHeight(60)
+
         # liveview
         self.liveviewButton = guitools.BetterPushButton('LIVEVIEW')
         self.liveviewButton.setStyleSheet("font-size:20px")
@@ -34,6 +37,7 @@ class ViewWidget(Widget):
         self.liveviewButton.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
         self.liveviewButton.setEnabled(True)
+        # self.liveviewButton.setMaximumHeight(80)
 
         # Add elements to GridLayout
         self.viewCtrlLayout = QtWidgets.QGridLayout()
@@ -42,6 +46,8 @@ class ViewWidget(Widget):
         self.viewCtrlLayout.addWidget(self.gridButton, 1, 0)
         self.viewCtrlLayout.addWidget(self.crosshairButton, 1, 1)
 
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
         # Connect signals
         self.gridButton.toggled.connect(self.sigGridToggled)
         self.crosshairButton.toggled.connect(self.sigCrosshairToggled)

@@ -132,8 +132,8 @@ class SaveMode(enum.Enum):
 
 
 class SaveFormat(enum.Enum):
-    HDF5 = 1
-    TIFF = 2
+    HDF5 = 2
+    TIFF = 1
     ZARR = 3
     MP4 = 4
 

@@ -172,6 +172,9 @@ class SettingsWidget(Widget):
         self.layout.addWidget(self.stack)
         self.layout.addLayout(self.detectorListBox)
 
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
+
         # Connect signals
         self.ROI.sigROIChanged.connect(self.sigROIChanged)
         self.detectorList.currentIndexChanged.connect(

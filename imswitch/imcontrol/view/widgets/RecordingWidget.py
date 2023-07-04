@@ -61,11 +61,16 @@ class RecordingWidget(Widget):
         self.snapTIFFButton.setStyleSheet("font-size:16px")
         self.snapTIFFButton.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
+        self.snapTIFFButton.setMaximumHeight(60)
         self.recButton = guitools.BetterPushButton('REC')
         self.recButton.setStyleSheet("font-size:16px")
         self.recButton.setCheckable(True)
         self.recButton.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Expanding)
+        self.recButton.setMaximumHeight(60)
+
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
 
         # Number of frames and measurement timing
         modeTitle = QtWidgets.QLabel('<strong>Recording mode</strong>')

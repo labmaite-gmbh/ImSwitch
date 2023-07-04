@@ -48,7 +48,8 @@ class ImageInfo:
 
     def get_filename(self):
         # TODO: fix hardcode in self.position_idx
-        return f"{self.slot}_{self.well}_{self.position_idx}_{self.illu_mode}_{round(self.z_focus)}_{self.timestamp}"
+        # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
+        return f"{self.slot}_{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
 
 
 class DeckScanController(LiveUpdatedController):
@@ -82,7 +83,6 @@ class DeckScanController(LiveUpdatedController):
         self.zStackMin = 0
         self.zStackMax = 0
         self.zStackStep = 0
-        self.MCTFilename = ""
         self.pixelsize = (10, 1, 1)  # zxy
         # Connect MCTWidget signals
         self._widget.ScanStartButton.clicked.connect(self.startScan)
@@ -171,7 +171,7 @@ class DeckScanController(LiveUpdatedController):
             # get parameters from GUI
             self.zStackMin, self.zStackMax, self.zStackStep, self.zStackEnabled = self._widget.getZStackValues()
             self.timePeriod, self.nDuration = self._widget.getTimelapseValues()
-            self.ScanFilename = self._widget.getFilename()
+            self.experiment_name = self._widget.getFilename()
             self.ScanDate = datetime.now().strftime("%Y%m%d_%H%M%S")
             # store old values for later
             if len(self.leds) > 0:
@@ -235,8 +235,10 @@ class DeckScanController(LiveUpdatedController):
                     #         self.doAutofocus(autofocusParams)
 
                     if self.LEDValue > 0:
-                        timestamp_ = str(self.nRounds) + strfdelta(datetime.now() - self.timeStart,
-                                                                   "_d{days}h{hours}m{minutes}s{seconds}")
+                        # timestamp_ = str(self.nRounds) + strfdelta(datetime.now() - self.timeStart,
+                        #                                            "_d{days}h{hours}m{minutes}s{seconds}")
+                        timestamp_ = strfdelta(datetime.now() - self.timeStart,
+                                                                   "_{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
                         illu_mode = "Brightfield"
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
@@ -364,7 +366,9 @@ class DeckScanController(LiveUpdatedController):
 
     # TODO: merge or clean img saving and file path getting
     def get_save_file_path(self, date, filename, extension):
-        mFilename = f"{self.ScanFilename}_{filename}_{self.nRounds}.{extension}"
+        # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
+        # mFilename = f"{self.experiment_name}_{filename}_{self.nRounds}.{extension}"
+        mFilename = f"{self.experiment_name}_{filename}.{extension}"
         dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date)
         newPath = os.path.join(dirPath, mFilename)
         if not os.path.exists(dirPath):
@@ -373,6 +377,7 @@ class DeckScanController(LiveUpdatedController):
 
     def save_image(self, image, info: ImageInfo):
         img_filename = info.get_filename()
+        # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         filePath = self.get_save_file_path(date=self.ScanDate, filename=img_filename, extension='tif')
         self._logger.debug(filePath)
         tif.imwrite(filePath, image)

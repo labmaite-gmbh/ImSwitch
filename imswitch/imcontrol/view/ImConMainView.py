@@ -99,19 +99,19 @@ class ImConMainView(QtWidgets.QMainWindow):
             'HoliSheet': _DockInfo(name='HoliSheet Tool', yPosition=3),
             'SquidStageScan': _DockInfo(name='SquidStageScan Tool', yPosition=3),
             'WellPlate': _DockInfo(name='Wellplate Tool', yPosition=1),
-            'Deck': _DockInfo(name="Deck Tool", yPosition=1),
+            'Deck': _DockInfo(name="Deck Tool", yPosition=0),
             'DeckScan': _DockInfo(name="Deck Scanner", yPosition=1),
             'OpentronsDeck': _DockInfo(name="OpentronsDeck Tool", yPosition=1),
             'OpentronsDeckScan': _DockInfo(name="OpentronsDeck Scanner", yPosition=1),
-            'LEDMatrix': _DockInfo(name='LEDMatrix Tool', yPosition=0),
             'Watcher': _DockInfo(name='File Watcher', yPosition=3),
             'Tiling': _DockInfo(name='Tiling', yPosition=3)
         }
         leftDockInfos = {
-            'Settings': _DockInfo(name='Detector Settings', yPosition=0),
+            'Recording': _DockInfo(name='Recording', yPosition=0),
             'View': _DockInfo(name='Image Controls', yPosition=1),
-            'Recording': _DockInfo(name='Recording', yPosition=2),
-            'Console': _DockInfo(name='Console', yPosition=3)
+            'LEDMatrix': _DockInfo(name='LEDMatrix Tool', yPosition=2),
+            'Settings': _DockInfo(name='Detector Settings', yPosition=3),
+            'Console': _DockInfo(name='Console', yPosition=2)
         }
         otherDockKeys = ['Image']
         allDockKeys = list(rightDockInfos.keys()) + list(leftDockInfos.keys()) + otherDockKeys

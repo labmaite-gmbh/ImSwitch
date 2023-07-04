@@ -138,7 +138,9 @@ class DeckWidget(Widget):
 
     def add_home(self, layout):
         self.home = guitools.BetterPushButton(text="HOME")  # QtWidgets.QPushButton(corrds)
-        self.home.setFixedSize(50, 30)
+        self.home.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                QtWidgets.QSizePolicy.Expanding)
+        self.home.setMaximumWidth(120)
         self.home.setStyleSheet("background-color: black; font-size: 14px")
         layout.addWidget(self.home)
 
@@ -146,7 +148,9 @@ class DeckWidget(Widget):
         # self.zero = guitools.BetterPushButton(text="ZERO")  # QtWidgets.QPushButton(corrds)
         # TODO: implement ZERO -> solve ESP32StageManager/Motor issue with set_motor
         self.zero = guitools.BetterPushButton(text="ZERO Z-AXIS")  # QtWidgets.QPushButton(corrds)
-        self.zero.setFixedSize(90, 30)
+        self.zero.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
+        self.zero.setMaximumWidth(120)
         # self.zero.setStyleSheet("background-color: black; font-size: 14px")
         self.zero.setStyleSheet("background-color: white; color: black; font-size: 14px")
         layout.addWidget(self.zero)
@@ -189,6 +193,8 @@ class DeckWidget(Widget):
                 self.deck_slots[corrds].setStyleSheet("background-color: None; font-size: 14px")
             layout.addWidget(self.deck_slots[corrds])
         self._deck_group_box.setMaximumHeight(70)
+        self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                      QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._deck_group_box, 2, 0, 1, 3)
         self.setLayout(self.main_grid_layout)
@@ -235,10 +241,13 @@ class DeckWidget(Widget):
         # actions_layout.addWidget(self.buttonOpen, 0, 7, 1, 1)
         # actions_layout.addWidget(self.buttonSave, 0, 8, 1, 1)
 
-        self._actions_widget.setMaximumHeight(200)
+        self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
         self._actions_widget.setMaximumWidth(140)
         self._actions_widget.setLayout(actions_layout)
-        self.scan_list.setMaximumHeight(200)
+        self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                     QtWidgets.QSizePolicy.Expanding)
+        self.scan_list.setMinimumWidth(500)
 
         self.main_grid_layout.addWidget(self.scan_list, 1, 1, 1, 2)
         self.main_grid_layout.addWidget(self._actions_widget, 1, 0, 1, 1)
@@ -377,8 +386,8 @@ class DeckWidget(Widget):
 
             self.numPositioners += 1
 
-        self._positioner_widget.setMaximumHeight(110)
-        self._positioner_widget.setMinimumWidth(140)
+        self._positioner_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
         self._positioner_widget.setLayout(layout)
         self.main_grid_layout.addWidget(self._positioner_widget, 0, 0, 1, 3)
 

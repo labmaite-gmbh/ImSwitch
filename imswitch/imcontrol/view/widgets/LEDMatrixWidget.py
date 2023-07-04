@@ -73,10 +73,10 @@ class LEDMatrixWidget(Widget):
         self.slider.setMaximum(255)
         self.slider.setTickInterval(5)
         self.slider.setSingleStep(5)
-        self.slider.setValue(255)
-        gridLayout.addWidget(self.slider, 9, 0, 1, 8)
-        self.setMaximumSize(400, 500)
-        # Add button layout to base well layout
+        self.slider.setValue(0)
+        gridLayout.addWidget(self.slider, nLedsY, 0, 1, nLedsX+1)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)        # Add button layout to base well layout
         self.setLayout(gridLayout)
 
     def _getParNameSuffix(self, positionerName, axis):
