@@ -69,9 +69,6 @@ class RecordingWidget(Widget):
                                      QtWidgets.QSizePolicy.Expanding)
         self.recButton.setMaximumHeight(60)
 
-        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
-
         # Number of frames and measurement timing
         modeTitle = QtWidgets.QLabel('<strong>Recording mode</strong>')
         modeTitle.setTextFormat(QtCore.Qt.RichText)
@@ -115,6 +112,8 @@ class RecordingWidget(Widget):
                                        'Save in memory for reconstruction',
                                        'Save on disk and keep in memory'])
 
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                   QtWidgets.QSizePolicy.Expanding)
         # Add items to GridLayout
         buttonWidget = QtWidgets.QWidget()
         buttonGrid = QtWidgets.QGridLayout()

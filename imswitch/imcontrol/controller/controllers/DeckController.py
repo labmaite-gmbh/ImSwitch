@@ -2,6 +2,7 @@ import json
 import time
 from functools import partial
 from typing import Optional
+from itertools import product
 
 import numpy as np
 from imswitch.imcommon.framework import Signal
@@ -236,7 +237,7 @@ class DeckController(LiveUpdatedController):
         self.selected_slot = slot
         self.selected_well = None
         self.connect_wells()
-        # self.connect_add_position()
+        # self.connect_add_beacons()
 
     @APIExport(runOnUIThread=True)
     def select_well(self, well):
@@ -244,7 +245,7 @@ class DeckController(LiveUpdatedController):
         self.selected_well = well
         self._widget.select_well(well)
         self.connect_go_to()
-        self.connect_add_position()
+        self.connect_add_beacons()
 
     def retranslate_position(self, position: Point, flip_xy=False):
         if flip_xy:  # TODO: avoid this by using normal coordinate system
@@ -283,7 +284,11 @@ class DeckController(LiveUpdatedController):
         self.connect_add_current_position()
 
     def connect_line_edit(self):
-        self._widget.pos_in_well_lined.textChanged.connect(self.connect_add_position)
+        # self._widget.pos_in_well_lined.textChanged.connect(self.connect_add_position)
+        self._widget.beacons_nx.textChanged.connect(self.connect_add_beacons)
+        self._widget.beacons_ny.textChanged.connect(self.connect_add_beacons)
+        self._widget.beacons_dx.textChanged.connect(self.connect_add_beacons)
+        self._widget.beacons_dy.textChanged.connect(self.connect_add_beacons)
 
     def current_slot(self):
         return self.deck_definition.get_slot(self.positioner.get_position())
@@ -331,10 +336,31 @@ class DeckController(LiveUpdatedController):
                 self._widget.add_current_btn.clicked.connect(
                     partial(self._widget.add_position_to_scan, slot, well, offset, z_focus, absolute_position))
 
-    def connect_add_position(self):
-        if isinstance(self._widget.add_btn, guitools.BetterPushButton):
+    def connect_add_beacons(self):
+        nx, ny = int(self._widget.beacons_nx.text()), int(self._widget.beacons_ny.text())
+        dx, dy = int(self._widget.beacons_dx.text()), int(self._widget.beacons_dy.text())
+        if isinstance(self._widget.beacons_add, guitools.BetterPushButton):
             try:
-                self._widget.add_btn.disconnect()
+                self._widget.beacons_add.disconnect()
+            except Exception:
+                pass
+            x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
+            z = self._widget.current_z_focus or float(self.positioner.position["Z"])
+            self._widget.current_z_focus = z
+            x, y, _ = self.translate_position(Point(x, y, z))  # Positioner value
+
+            xx,yy = [dx*(i-(nx-1)/2) for i in range(nx)], [dy*(i-(ny-1)/2) for i in range(ny)]
+
+            for xi, yi in product(xx, yy):
+                self._widget.beacons_add.clicked.connect(
+                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well, (xi, yi),
+                            self._widget.current_z_focus, (x+xi, y+yi, z)))
+
+    """
+    def connect_add_position_(self):
+        if isinstance(self._widget.beacons_add, guitools.BetterPushButton):
+            try:
+                self._widget.beacons_add.disconnect()
             except Exception:
                 pass
             x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
@@ -343,41 +369,42 @@ class DeckController(LiveUpdatedController):
             self._widget.current_z_focus = z
             if self._widget.positions_in_well == 1:
                 offset = self.default_positions_in_well["center"]
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well, offset,
                             self._widget.current_z_focus, (x, y, z)))
             elif self._widget.positions_in_well == 2:
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
             elif self._widget.positions_in_well == 3:
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["up"], self._widget.current_z_focus, (x, y, z)))
             elif self._widget.positions_in_well == 4:
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["up"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.add_btn.clicked.connect(
+                self._widget.beacons_add.clicked.connect(
                     partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
                             self.default_positions_in_well["down"], self._widget.current_z_focus, (x, y, z)))
 
             # offset = well.geometry.position - self.positioner.get_position()
+    """
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
@@ -389,6 +416,8 @@ class DeckController(LiveUpdatedController):
             # )
             if isinstance(btn, guitools.BetterPushButton):
                 btn.clicked.connect(partial(self.select_labware, slot))
+        # Select default slot
+        self.select_labware(list(self._widget._labware_dict.keys())[0]) # TODO: improve...
 
     def connect_go_to(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""

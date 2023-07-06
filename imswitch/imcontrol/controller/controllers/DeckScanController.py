@@ -3,7 +3,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from queue import Queue
 from typing import Optional, NamedTuple, Tuple
 
@@ -249,6 +249,8 @@ class DeckScanController(LiveUpdatedController):
                         for pos_id, row_info, frame in self.takeImageIllu(illuMode=illu_mode,
                                                                           intensity=self.LEDValue,
                                                                           timestamp=timestamp_):
+                            # self.update_progress()
+                            self.update_time_to_next_round(tperiod)
                             if not self.isScanrunning:
                                 break
                     self.nRounds += 1
@@ -261,10 +263,32 @@ class DeckScanController(LiveUpdatedController):
                     self.positioner.move(value=0, axis="Z", is_blocking=True)
                     raise e
                     # close the controller ina nice way
-            self.positioner.move(value=0, axis="Z", is_blocking=True)
+
+            else:
+                self.update_time_to_next_round(tperiod, True)
+            self.positioner.move(value=0, axis="Z", is_blocking=True) # TODO: needed?
             # pause to not overwhelm the CPU
         time.sleep(0.1)
         self.stopScan()
+
+    def update_time_to_next_round(self, tperiod, sleep = False):
+        delta = timedelta(seconds=tperiod) + datetime.fromtimestamp(self.timeLast) - datetime.now()
+        time_to_next = strfdelta(delta, "{hours}:{minutes}:{seconds}")
+        if sleep:
+            if delta.seconds < 60:
+                print(f"Time to next: {time_to_next}")
+                time.sleep(1)
+            elif delta.seconds < 600:
+                print(f"Time to next: {time_to_next}")
+                time.sleep(60)
+            elif delta.seconds < 3600:
+                print(f"Time to next: {time_to_next}")
+                time.sleep(300)
+            else:
+                print(f"Time to next: {time_to_next}")
+                time.sleep(600)
+        else:
+            print(f"Time to next: {time_to_next}")
 
     def switchOnIllumination(self, intensity):
         self.__logger.info(f"Turning on Leds: {intensity} A")

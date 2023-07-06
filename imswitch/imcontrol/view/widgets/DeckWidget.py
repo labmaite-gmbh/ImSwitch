@@ -41,10 +41,10 @@ class DeckWidget(Widget):
         self.current_absolute_position = (None, None, None)
         self.first_z_focus = 0.0
 
-        self.__logger = initLogger(self, instanceName="OpentronsDeckWidget")
+        self.__logger = initLogger(self, instanceName="DeckWidget")
 
 
-    # https://stackoverflow.com/questions/12608835/writing-a-qtablewidget-to-a-csv-or-xls
+    # https://stackoverflow.com/questions/12608830/writing-a-qtablewidget-to-a-csv-or-xls
     # Extra blank row issue: https://stackoverflow.com/questions/3348460/csv-file-written-with-python-has-blank-lines-between-each-row
     def handleSave(self):
         path = QtWidgets.QFileDialog.getSaveFileName(
@@ -80,6 +80,12 @@ class DeckWidget(Widget):
                     self.scan_list.setItem(self.scan_list_items, column, item)
                 self.scan_list_items += 1
 
+    def handleClear(self):
+        self.scan_list.clearContents()
+        self.scan_list.setRowCount(0)
+        self.scan_list_items = 0
+
+
     def select_well(self, well):
         for well_id, btn in self.wells.items():
             if isinstance(btn, guitools.BetterPushButton):
@@ -87,11 +93,13 @@ class DeckWidget(Widget):
                     btn.setStyleSheet("background-color: green; font-size: 14px")
                 else:
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
+        self.beacons_selected_well.setText(f"{well}")
 
     def select_labware(self, slot):
+        self.current_slot = slot
         if hasattr(self, "_wells_group_box"):
             self.main_grid_layout.removeWidget(self._wells_group_box)
-        self._wells_group_box = QtWidgets.QGroupBox(f"Labware layout: {slot}: {self._labware_dict[slot]}")
+        self._wells_group_box = QtWidgets.QGroupBox(f"{self._labware_dict[slot]}")
         layout = QtWidgets.QGridLayout()
 
         labware = self._labware_dict[slot]
@@ -112,11 +120,11 @@ class DeckWidget(Widget):
         for corrds, pos in well_buttons.items():
             if 0 in pos:
                 self.wells[corrds] = QtWidgets.QLabel(text=str(corrds))  # QtWidgets.QPushButton(corrds)
-                self.wells[corrds].setFixedSize(35, 25)
+                self.wells[corrds].setFixedSize(25, 20)
                 self.wells[corrds].setStyleSheet("background-color: None; font-size: 12px")
             else:
                 self.wells[corrds] = guitools.BetterPushButton(corrds)  # QtWidgets.QPushButton(corrds)
-                self.wells[corrds].setFixedSize(35, 25)
+                self.wells[corrds].setFixedSize(25, 20)
                 self.wells[corrds].setStyleSheet("background-color: grey; font-size: 14px")
             # Set style for empty cell
             # self.wells[corrds].setStyleSheet("background-color: none")
@@ -130,27 +138,31 @@ class DeckWidget(Widget):
                     btn.setStyleSheet("background-color: blue; font-size: 14px")
                 else:
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
-
-        self._wells_group_box.setMaximumHeight(280)
+        self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                QtWidgets.QSizePolicy.Expanding)
         self._wells_group_box.setLayout(layout)
-        self.main_grid_layout.addWidget(self._wells_group_box, 3, 0, 1, 3)
+        self.main_grid_layout.addWidget(self._wells_group_box, 2, 5, 4, 9)
         self.setLayout(self.main_grid_layout)
 
     def add_home(self, layout):
         self.home = guitools.BetterPushButton(text="HOME")  # QtWidgets.QPushButton(corrds)
         self.home.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                 QtWidgets.QSizePolicy.Expanding)
-        self.home.setMaximumWidth(120)
+        self.home.setMinimumWidth(120)
+        self.home.setMinimumHeight(40)
+        self.home.setMaximumHeight(60)
         self.home.setStyleSheet("background-color: black; font-size: 14px")
         layout.addWidget(self.home)
 
     def add_zero(self, layout):
         # self.zero = guitools.BetterPushButton(text="ZERO")  # QtWidgets.QPushButton(corrds)
         # TODO: implement ZERO -> solve ESP32StageManager/Motor issue with set_motor
-        self.zero = guitools.BetterPushButton(text="ZERO Z-AXIS")  # QtWidgets.QPushButton(corrds)
+        self.zero = guitools.BetterPushButton(text="ZERO\nZ-AXIS")  # QtWidgets.QPushButton(corrds)
         self.zero.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
-        self.zero.setMaximumWidth(120)
+        self.zero.setMinimumWidth(120)
+        self.zero.setMinimumHeight(40)
+        self.zero.setMaximumHeight(60)
         # self.zero.setStyleSheet("background-color: black; font-size: 14px")
         self.zero.setStyleSheet("background-color: white; color: black; font-size: 14px")
         layout.addWidget(self.zero)
@@ -165,6 +177,7 @@ class DeckWidget(Widget):
         # Add home and zero buttons
         self.add_home(layout)
         self.add_zero(layout)
+        # self.add_slot(layout)
 
         # Create dictionary to hold buttons
         slots = [slot["id"] for slot in deck_dict["locations"]["orderedSlots"]]
@@ -177,7 +190,7 @@ class DeckWidget(Widget):
             if corrds in used_slots:
                 # Do button if slot contains labware
                 self.deck_slots[corrds] = guitools.BetterPushButton(corrds)  # QtWidgets.QPushButton(corrds)
-                self.deck_slots[corrds].setFixedSize(30, 30)
+                self.deck_slots[corrds].setFixedSize(25, 20)
                 self.deck_slots[corrds].setStyleSheet("QPushButton"
                                                       "{"
                                                       "background-color : grey; font-size: 14px"
@@ -189,14 +202,15 @@ class DeckWidget(Widget):
                                                       )
             else:
                 self.deck_slots[corrds] = QtWidgets.QLabel(corrds)  # QtWidgets.QPushButton(corrds)
-                self.deck_slots[corrds].setFixedSize(30, 30)
+                self.deck_slots[corrds].setFixedSize(25, 20)
                 self.deck_slots[corrds].setStyleSheet("background-color: None; font-size: 14px")
             layout.addWidget(self.deck_slots[corrds])
-        self._deck_group_box.setMaximumHeight(70)
+        # self._deck_group_box.setMaximumHeight(70)
         self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                       QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
-        self.main_grid_layout.addWidget(self._deck_group_box, 2, 0, 1, 3)
+        self.select_labware(used_slots[0])
+        self.main_grid_layout.addWidget(self._deck_group_box, 1, 5, 1, 9)
         self.setLayout(self.main_grid_layout)
 
     def init_scan_list(
@@ -208,49 +222,94 @@ class DeckWidget(Widget):
         # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
 
         self._actions_widget = QtWidgets.QGroupBox("Actions")
+        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
+        self.beacons_widget = QtWidgets.QGroupBox("Beacons")
 
-        actions_layout = QtWidgets.QVBoxLayout()
+        actions_layout = QtWidgets.QHBoxLayout()
+        scan_list_actions_layout = QtWidgets.QHBoxLayout()
+        beacons_layout = QtWidgets.QGridLayout()
+
         self.goto_btn = guitools.BetterPushButton('GO TO')
+        # self.goto_btn.setFixedHeight(30)
         self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
-        self.pos_in_well_lined = QtWidgets.QLineEdit("1")
-        self.add_btn = guitools.BetterPushButton('ADD')
+        # self.add_current_btn.setFixedHeight(30)
+        # self.pos_in_well_lined = QtWidgets.QLineEdit("1")
+        self.beacons_nx = QtWidgets.QLineEdit("2")
+        self.beacons_ny = QtWidgets.QLineEdit("2")
+        self.beacons_dx = QtWidgets.QLineEdit("300")
+        self.beacons_dy = QtWidgets.QLineEdit("300")
+        self.beacons_add = guitools.BetterPushButton('ADD')
+        self.beacons_selected_well = QtWidgets.QLabel("<Well>")
+        # self.pos_in_well_lined.setFixedHeight(30)
+        # self.beacons_add.setFixedHeight(30)
 
         self.buttonOpen = guitools.BetterPushButton('Open')
-        self.buttonOpen.setFixedSize(60,20)
+        self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                      QtWidgets.QSizePolicy.Expanding)
         self.buttonOpen.setStyleSheet("background-color : gray; color: black")
         self.buttonSave = guitools.BetterPushButton('Save')
-        self.buttonSave.setFixedSize(60,20)
+        self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                      QtWidgets.QSizePolicy.Expanding)
         self.buttonSave.setStyleSheet("background-color : gray; color: black")
+        self.buttonClear = guitools.BetterPushButton('Clear')
+        self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                      QtWidgets.QSizePolicy.Expanding)
+        self.buttonClear.setStyleSheet("background-color : gray; color: black")
 
         self.buttonOpen.clicked.connect(self.handleOpen)
         self.buttonSave.clicked.connect(self.handleSave)
+        self.buttonClear.clicked.connect(self.handleClear)
 
-        actions_layout.addWidget(self.goto_btn, 0)
-        actions_layout.addWidget(self.add_current_btn, 1)
-        actions_layout.addWidget(QtWidgets.QLabel("#Pos. in well"), 2)
-        actions_layout.addWidget(self.pos_in_well_lined, 3)
-        actions_layout.addWidget(self.add_btn, 4)
-        actions_layout.addWidget(self.buttonOpen, 5)
-        actions_layout.addWidget(self.buttonSave, 6)
-        #
-        # actions_layout.addWidget(self.goto_btn, 0, 0, 2, 2)
-        # actions_layout.addWidget(self.add_current_btn, 0, 2, 2, 2)
-        # actions_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 4, 1, 1)
-        # actions_layout.addWidget(self.pos_in_well_lined, 0, 5, 1, 1)
-        # actions_layout.addWidget(self.add_btn, 0, 6, 1, 1)
-        # actions_layout.addWidget(self.buttonOpen, 0, 7, 1, 1)
-        # actions_layout.addWidget(self.buttonSave, 0, 8, 1, 1)
+        # actions_layout.addWidget(self.goto_btn, 0)
+        # actions_layout.addWidget(self.add_current_btn, 1)
+        # actions_layout.addWidget(QtWidgets.QLabel("#Pos. in well"), 2)
+        # actions_layout.addWidget(self.pos_in_well_lined, 3)
+        # actions_layout.addWidget(self.beacons_add, 4)
+        # actions_layout.addWidget(self.buttonOpen, 5)
+        # actions_layout.addWidget(self.buttonSave, 6)
+        # actions_layout.addWidget(self.buttonClear, 7)
+
+        actions_layout.addWidget(self.goto_btn)
+        actions_layout.addWidget(self.add_current_btn)
+
+        # beacons_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 0, 1, 1)
+        beacons_layout.addWidget(QtWidgets.QLabel("Nx x Ny"), 0, 0, 1, 1)
+        beacons_layout.addWidget(QtWidgets.QLabel("Dx x Dy [um]"), 1, 0, 1, 1)
+        # beacons_layout.addWidget(self.pos_in_well_lined, 0, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_nx, 0, 1, 1, 1)
+        beacons_layout.addWidget(self.beacons_ny, 0, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_dx, 1, 1, 1, 1)
+        beacons_layout.addWidget(self.beacons_dy, 1, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_selected_well, 0, 3, 1, 1)
+        beacons_layout.addWidget(self.beacons_add, 1, 3, 1, 1)
+        scan_list_actions_layout.addWidget(self.buttonOpen)
+        scan_list_actions_layout.addWidget(self.buttonSave)
+        scan_list_actions_layout.addWidget(self.buttonClear)
+
+        self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                    QtWidgets.QSizePolicy.Expanding)
+        self.scan_list_actions_widget.setMaximumHeight(60)
+
+        self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
 
         self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
-        self._actions_widget.setMaximumWidth(140)
+        # self._actions_widget.setMaximumWidth(140)
+        self._actions_widget.setMaximumHeight(60)
         self._actions_widget.setLayout(actions_layout)
+        self.beacons_widget.setLayout(beacons_layout)
+        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
+
         self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Expanding)
-        self.scan_list.setMinimumWidth(500)
+        self.scan_list.setMaximumHeight(500)
+        # self.scan_list.setMinimumWidth(500)
 
-        self.main_grid_layout.addWidget(self.scan_list, 1, 1, 1, 2)
-        self.main_grid_layout.addWidget(self._actions_widget, 1, 0, 1, 1)
+        self.main_grid_layout.addWidget(self.scan_list, 6, 0, 1, 14)
+        self.main_grid_layout.addWidget(self._actions_widget, 4, 0, 1, 5)
+        self.main_grid_layout.addWidget(self.beacons_widget, 1, 0, 3, 5)
+        self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 5)
 
     def add_position_to_scan(self, slot, well, offset, z_focus, absolute_position):
         # TODO: forward it to table: table logic inside table.
@@ -389,7 +448,7 @@ class DeckWidget(Widget):
         self._positioner_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
         self._positioner_widget.setLayout(layout)
-        self.main_grid_layout.addWidget(self._positioner_widget, 0, 0, 1, 3)
+        self.main_grid_layout.addWidget(self._positioner_widget, 0, 0, 1, 14)
 
     @property
     def current_slot(self):
@@ -431,15 +490,15 @@ class DeckWidget(Widget):
     def current_absolute_position(self, current_absolute_position):
         self._current_absolute_position = current_absolute_position
 
-    @property
-    def positions_in_well(self):
-        try:
-            if int(self.pos_in_well_lined.text()) > 4:
-                return 4
-            else:
-                return int(self.pos_in_well_lined.text())
-        except ValueError:
-            return 1
+    # @property
+    # def positions_in_well(self):
+    #     try:
+    #         if int(self.pos_in_well_lined.text()) > 4:
+    #             return 4
+    #         else:
+    #             return int(self.pos_in_well_lined.text())
+    #     except ValueError:
+    #         return 1
 
     def getStepSize(self, positionerName, axis):
         """ Returns the step size of the specified positioner axis in
