@@ -83,7 +83,6 @@ class DeckScanController(LiveUpdatedController):
         self.nRounds = 0
         self.timePeriod = 60  # seconds
         self.zStackEnabled = False
-        self.zStackMin = 0
         self.zStackMax = 0
         self.zStackStep = 0
         self.pixelsize = (10, 1, 1)  # zxy
@@ -167,12 +166,19 @@ class DeckScanController(LiveUpdatedController):
         # this is not a thread!
         self._widget.ScanStartButton.setEnabled(False)
         # start the timelapse
+        # get parameters from GUI
+        self.zStackDepth, self.zStackStep, self.zStackEnabled = self._widget.getZStackValues()
+        if self.zStackEnabled and self.zStackDepth<=0:
+            self.__logger.debug("Z-Stack enabled: sample depth must be positive.")
+            self._widget.show_info("Z-Stack enabled: sample depth must be positive.")
+            self.isScanrunning = False
+            self._widget.ScanStartButton.setEnabled(True)
+
         if not self.isScanrunning and self.LEDValue > 0:
             self.nRounds = 0
-            self._widget.setNImages("Starting timelapse...")
+            self._widget.show_info("Starting timelapse...")
             self.switchOffIllumination()
-            # get parameters from GUI
-            self.zStackMin, self.zStackMax, self.zStackStep, self.zStackEnabled = self._widget.getZStackValues()
+
             self.timePeriod, self.nDuration = self._widget.getTimelapseValues()
             self.experiment_name = self._widget.getFilename()
             self.ScanDate = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -186,10 +192,19 @@ class DeckScanController(LiveUpdatedController):
             # TODO: populate positions_list with scan_list and give it to takeTimelapse
             positions_list = self._widget.get_all_positions()
             self.takeTimelapse(self.timePeriod, positions_list)
+            # if len(positions_list):
+            #     self.takeTimelapse(self.timePeriod, positions_list)
+            # else:
+            #     self.__logger.debug("You need to define at least one position to scan.")
+            #     self._widget.show_info("You need to define at least one position to scan.")
+            #     self.isScanrunning = False
+            #     self._widget.ScanStartButton.setEnabled(True)
+
         else:
             self.isScanrunning = False
             if self.LEDValue == 0:
                 self.__logger.debug("LED intensity needs to be set before starting scan.")
+                self._widget.show_info("LED intensity needs to be set before starting scan.")
             self._widget.ScanStartButton.setEnabled(True)
 
     def takeTimelapse(self, tperiod, positions_list):
@@ -207,6 +222,8 @@ class DeckScanController(LiveUpdatedController):
         # this wil run i nthe background
         self.timeLast = 0
         self.timeStart = datetime.now()
+        self._widget.show_info(f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
+        self._widget.setNImages(self.nRounds)
         # run as long as the Scan is active
         while self.isScanrunning:
             # stop measurement once done
@@ -220,6 +237,7 @@ class DeckScanController(LiveUpdatedController):
                 # TODO: include estimation of one run (Autofocus * Z-Stack * Positions * Speed)
                 # run an event
                 self.timeLast = time.time()  # makes sure that the period is measured from launch to launch
+                self._widget.update_widget_text(self._widget.ScanInfoStartTime, f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
                 # Get positions to observe:
@@ -245,15 +263,15 @@ class DeckScanController(LiveUpdatedController):
                         self.z_focus = float(self._widget.autofocusInitial.text())
                         illu_mode = "Brightfield"
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
-
+                        self._widget.show_info("Timelapse progress: ")
                         for pos_id, row_info, frame in self.takeImageIllu(illuMode=illu_mode,
                                                                           intensity=self.LEDValue,
                                                                           timestamp=timestamp_):
-                            # self.update_progress()
                             self.update_time_to_next_round(tperiod)
                             if not self.isScanrunning:
                                 break
                     self.nRounds += 1
+                    self.display_current_well("-")
                     self._widget.setNImages(self.nRounds)
                     self.LastStackLEDArrayLast = np.array(self.LastStackLED)
                     self._widget.ScanShowLastButton.setEnabled(True)
@@ -271,24 +289,24 @@ class DeckScanController(LiveUpdatedController):
         time.sleep(0.1)
         self.stopScan()
 
+    def display_current_well(self, well):
+        self._widget.update_widget_text(self._widget.ScanInfoCurrentWell, f"Scanning well: {well}")
+
     def update_time_to_next_round(self, tperiod, sleep = False):
         delta = timedelta(seconds=tperiod) + datetime.fromtimestamp(self.timeLast) - datetime.now()
         time_to_next = strfdelta(delta, "{hours}:{minutes}:{seconds}")
+        self.__logger.info(f"Time to next: {time_to_next}")
+        self._widget.update_widget_text(self._widget.ScanInfoTimeToNextRound, f"Next round in: {time_to_next}")
         if sleep:
             if delta.seconds < 60:
-                print(f"Time to next: {time_to_next}")
                 time.sleep(1)
             elif delta.seconds < 600:
-                print(f"Time to next: {time_to_next}")
                 time.sleep(60)
             elif delta.seconds < 3600:
-                print(f"Time to next: {time_to_next}")
                 time.sleep(300)
             else:
-                print(f"Time to next: {time_to_next}")
                 time.sleep(600)
-        else:
-            print(f"Time to next: {time_to_next}")
+
 
     def switchOnIllumination(self, intensity):
         self.__logger.info(f"Turning on Leds: {intensity} A")
@@ -328,7 +346,7 @@ class DeckScanController(LiveUpdatedController):
 
     def doAutofocus(self, params):
         self._logger.info("Autofocusing at first position...")
-        self._widget.setNImages("Autofocusing...")
+        self._widget.show_info("Autofocusing...")
         slot, well, first_position_offset, first_z_focus, first_pos = self.get_first_row()
         self.positioner.move(value=first_pos, axis="XYZ", is_absolute=True, is_blocking=True)
         self._commChannel.sigAutoFocus.emit(float(params["valueRange"]), float(params["valueSteps"]),
@@ -374,8 +392,6 @@ class DeckScanController(LiveUpdatedController):
     def take_z_stack_at_position(self, current_position: Point, intensity):
         self.positioner.move(value=current_position, axis="XYZ", is_absolute=True, is_blocking=True)
         time.sleep(self.tUnshake*3)
-        # perform a z-stack from z_focus
-        self.zStackDepth = self.zStackMax - self.zStackMin
         # for zn, iZ in enumerate(np.arange(self.zStackMin, self.zStackMax, self.zStackStep)):
         # Array of displacements from center point (z_focus) -/+ z_depth/2
         self.switchOnIllumination(
@@ -427,6 +443,7 @@ class DeckScanController(LiveUpdatedController):
                                  position_idx=image_index, timestamp=timestamp)  # TODO: avoid hardcoded position_idx
 
             self.__logger.info(f"Currently scanning row: {self.current_scanning_row}")
+            self.display_current_well(well)
 
             if self.zStackEnabled:
                 for z_index, (z_pos, frame) in enumerate(self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
@@ -450,7 +467,7 @@ class DeckScanController(LiveUpdatedController):
             yield pos_i, pos_row, frame
 
     def stopScan(self):
-        self._widget.setNImages("Stopping timelapse...")
+        self._widget.show_info("Stopping timelapse...")
         # # delete any existing timer
         # try:
         #     del self.timer
@@ -468,7 +485,7 @@ class DeckScanController(LiveUpdatedController):
         except Exception as e:
             print(f"Error deleting existing Thread: {e}")
             pass
-        self._widget.setNImages("Done wit timelapse...")
+        self._widget.show_info("Done wit timelapse...")
 
         self.positioner.move(value=0, axis="Z", is_blocking=True)
         # store old values for later
@@ -521,7 +538,7 @@ class DeckScanController(LiveUpdatedController):
 
     def valueLEDChanged(self, value):
         self.LEDValue = value
-        self._widget.LabelLED.setText('Intensity (LED):' + str(value))
+        self._widget.ValueLED.setText(f'{str(value)} %')
         try:
             if len(self.leds) and not self.leds[0].enabled:
                 self.leds[0].setEnabled(1)

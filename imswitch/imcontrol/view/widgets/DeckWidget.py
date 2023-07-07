@@ -138,8 +138,8 @@ class DeckWidget(Widget):
                     btn.setStyleSheet("background-color: blue; font-size: 14px")
                 else:
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
-        self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                QtWidgets.QSizePolicy.Expanding)
+        # self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+        #                         QtWidgets.QSizePolicy.Expanding)
         self._wells_group_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._wells_group_box, 2, 5, 4, 9)
         self.setLayout(self.main_grid_layout)
@@ -205,7 +205,7 @@ class DeckWidget(Widget):
                 self.deck_slots[corrds].setFixedSize(25, 20)
                 self.deck_slots[corrds].setStyleSheet("background-color: None; font-size: 14px")
             layout.addWidget(self.deck_slots[corrds])
-        # self._deck_group_box.setMaximumHeight(70)
+        self._deck_group_box.setMaximumHeight(120)
         self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                       QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
@@ -297,13 +297,14 @@ class DeckWidget(Widget):
                                           QtWidgets.QSizePolicy.Expanding)
         # self._actions_widget.setMaximumWidth(140)
         self._actions_widget.setMaximumHeight(60)
+        self.beacons_widget.setMaximumHeight(120)
         self._actions_widget.setLayout(actions_layout)
         self.beacons_widget.setLayout(beacons_layout)
         self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
 
         self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Expanding)
-        self.scan_list.setMaximumHeight(500)
+        # self.scan_list.setMaximumHeight(500)
         # self.scan_list.setMinimumWidth(500)
 
         self.main_grid_layout.addWidget(self.scan_list, 6, 0, 1, 14)

@@ -59,13 +59,15 @@ class DeckScanWidget(NapariHybridWidget):
         # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
         self.buttonOpen = guitools.BetterPushButton('Open')
         self.buttonSave = guitools.BetterPushButton('Save')
+        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
+        self.buttonSave.setStyleSheet("background-color : gray; color: black")
 
         self.buttonOpen.clicked.connect(self.handleOpen)
         self.buttonSave.clicked.connect(self.handleSave)
 
-        self.grid.addWidget(self.scan_list,12, 0, 1, 4)
+        self.grid.addWidget(self.scan_list,12, 0, 1, 8)
         self.grid.addWidget(self.buttonOpen,11, 0, 1, 1)
-        # self.grid.addWidget(self.buttonSave,11, 1, 1, 1) # DO not display save here
+        self.grid.addWidget(self.buttonSave,11, 1, 1, 1) # DO not display save here
 
 
     # https://stackoverflow.com/questions/12608835/writing-a-qtablewidget-to-a-csv-or-xls
@@ -123,18 +125,27 @@ class DeckScanWidget(NapariHybridWidget):
 
         # initialize all GUI elements
         # period
-        self.ScanLabelTimePeriod = QtWidgets.QLabel('Period T (s):') # TODO: change for a h:m:s Widget
-        self.ScanValueTimePeriod = QtWidgets.QLineEdit('0')
+        self.ScanLabelTimePeriod = QtWidgets.QLabel('Period T:') # TODO: change for a h:m:s Widget
+        self.ScanLabelTimePeriodHours = QtWidgets.QLabel('Hours')
+        self.ScanLabelTimePeriodMinutes = QtWidgets.QLabel('Minutes')
+        self.ScanLabelTimePeriodSeconds = QtWidgets.QLabel('Seconds')
+
+        self.ScanValueTimePeriodHours = QtWidgets.QLineEdit('0')
+        self.ScanValueTimePeriodMinutes = QtWidgets.QLineEdit('0')
+        self.ScanValueTimePeriodSeconds = QtWidgets.QLineEdit('0')
+        self.ScanValueTimePeriodHours.setFixedWidth(30)
+        self.ScanValueTimePeriodMinutes.setFixedWidth(30)
+        self.ScanValueTimePeriodSeconds.setFixedWidth(30)
+
         # duration
-        self.ScanLabelTimeDuration = QtWidgets.QLabel('N Rounds:')
-        self.ScanValueTimeDuration = QtWidgets.QLineEdit('1')
+        self.ScanLabelRounds = QtWidgets.QLabel('N° Rounds:')
+        self.ScanValueRounds = QtWidgets.QLineEdit('1')
+        self.ScanValueRounds.setFixedWidth(30)
+
         # z-stack
-        self.ScanLabelZStack = QtWidgets.QLabel('Z-Stack (sample height [um],n_slices):')
-        self.ScanValueZmin = QtWidgets.QLineEdit('0')
-        self.ScanValueZmax = QtWidgets.QLineEdit('0')
-        self.ScanValueZsteps = QtWidgets.QLineEdit('5')
         self.ScanDoZStack = QtWidgets.QCheckBox('Perform Z-Stack')
         self.ScanDoZStack.setCheckable(True)
+        self.ScanDoZStack.stateChanged.connect(self.open_z_stack_options)
         # autofocus
         self.autofocusLabel = QtWidgets.QLabel('Autofocus (range, steps, every n-th round): ')
         self.autofocusRange = QtWidgets.QLineEdit('0.5')
@@ -142,6 +153,16 @@ class DeckScanWidget(NapariHybridWidget):
         self.autofocusPeriod = QtWidgets.QLineEdit('1')
         self.autofocusInitial = QtWidgets.QLineEdit('0')
         self.z_focus = float(self.autofocusInitial.text())
+        self.ScanLabelSampleDepth = QtWidgets.QLabel('Sample Depth [um]:')
+        self.ScanValueSampleDepth = QtWidgets.QLineEdit('0')
+        self.ScanLabelNSlices = QtWidgets.QLabel('N° Slices:')
+        self.ScanValueNSlices = QtWidgets.QLineEdit('5')
+        self.ScanLabelSampleDepth.setHidden(True)
+        self.ScanValueSampleDepth.setHidden(True)
+        self.ScanValueSampleDepth.setFixedWidth(30)
+        self.ScanLabelNSlices.setHidden(True)
+        self.ScanValueNSlices.setHidden(True)
+        self.ScanValueNSlices.setFixedWidth(30)
 
         self.autofocusLED1Checkbox = QtWidgets.QCheckBox('LED 1')
         self.autofocusLED1Checkbox.setCheckable(True)
@@ -156,13 +177,27 @@ class DeckScanWidget(NapariHybridWidget):
 
         self.sliderLED, self.LabelLED = self.setupSliderGui('Intensity (LED):', valueDecimalsLED, valueRangeLED,
                                                           tickIntervalLED, singleStepLED)
+        self.ValueLED = QtWidgets.QLabel("0 %")
         self.sliderLED.valueChanged.connect(
             lambda value: self.sigSliderLEDValueChanged.emit(value)
         )
         # Scan buttons
-        self.ScanLabelFileName = QtWidgets.QLabel('FileName:')
+        self.ScanLabelFileName = QtWidgets.QLabel('Experiment Name:')
         self.ScanEditFileName = QtWidgets.QLineEdit('Scan')
-        self.ScanNRounds = QtWidgets.QLabel('Number of rounds: ')
+        # Info
+        self.ScanInfoLabel = QtWidgets.QLabel('Experiment info:')
+        self.ScanInfoLabel.setHidden(True)
+        self.ScanInfoStartTime = QtWidgets.QLabel('Started at: ')
+        self.ScanInfoStartTime.setHidden(True)
+        self.ScanInfoRoundStartTime = QtWidgets.QLabel('Current round started at: ')
+        self.ScanInfoRoundStartTime.setHidden(True)
+        self.ScanInfoTimeToNextRound = QtWidgets.QLabel('Next round in: ')
+        self.ScanInfoTimeToNextRound.setHidden(True)
+        self.ScanInfoNRounds = QtWidgets.QLabel('i/N')
+        self.ScanInfoNRounds.setHidden(True)
+        self.ScanInfoCurrentWell = QtWidgets.QLabel('Scanning well: ')
+        self.ScanInfoCurrentWell.setHidden(True)
+
         self.ScanStartButton = guitools.BetterPushButton('Start')
         self.ScanStartButton.setCheckable(False)
         self.ScanStartButton.toggled.connect(self.sigScanStart)
@@ -176,35 +211,49 @@ class DeckScanWidget(NapariHybridWidget):
         self.grid = QtWidgets.QGridLayout()
         self.setLayout(self.grid)
 
-        self.grid.addWidget(self.ScanLabelTimePeriod, 0, 0, 1, 1)
-        self.grid.addWidget(self.ScanValueTimePeriod, 0, 1, 1, 1)
-        self.grid.addWidget(self.ScanLabelTimeDuration, 0, 2, 1, 1)
-        self.grid.addWidget(self.ScanValueTimeDuration, 0, 3, 1, 1)
-        # z-stack
-        self.grid.addWidget(self.ScanLabelZStack, 1, 0, 1, 1)
-        # self.grid.addWidget(self.ScanValueZmin, 1, 1, 1, 1) # Just use sample height
-        self.grid.addWidget(self.ScanValueZmax, 1, 2, 1, 1)
-        self.grid.addWidget(self.ScanValueZsteps, 1, 3, 1, 1)
-        self.grid.addWidget(self.LabelLED, 6, 0, 1, 1)
-        self.grid.addWidget(self.sliderLED, 6, 1, 1, 3)
+        self.grid.addWidget(self.ScanLabelFileName, 0, 0, 1, 1)
+        self.grid.addWidget(self.ScanEditFileName, 0, 1, 1, 2)
+        self.grid.addWidget(self.ScanLabelRounds, 0, 3, 1, 2)
+        self.grid.addWidget(self.ScanValueRounds, 0, 5, 1, 2)
+
+        self.grid.addWidget(self.ScanLabelTimePeriod, 1, 1, 1, 1)
+        self.grid.addWidget(self.ScanValueTimePeriodHours, 1, 2, 1, 1)
+        self.grid.addWidget(self.ScanLabelTimePeriodHours, 1, 3, 1, 1)
+        self.grid.addWidget(self.ScanValueTimePeriodMinutes, 1, 4, 1, 1)
+        self.grid.addWidget(self.ScanLabelTimePeriodMinutes, 1, 5, 1, 1)
+        self.grid.addWidget(self.ScanValueTimePeriodSeconds, 1, 6, 1, 1)
+        self.grid.addWidget(self.ScanLabelTimePeriodSeconds, 1, 7, 1, 1)
+
+        self.grid.addWidget(self.LabelLED, 2, 1, 1, 1)
+        self.grid.addWidget(self.ValueLED, 2, 2, 1, 1)
+        self.grid.addWidget(self.sliderLED, 2, 3, 1, 4)
+
+        self.grid.addWidget(self.ScanDoZStack, 3, 0, 1, 1)
+        self.grid.addWidget(self.ScanLabelSampleDepth, 3, 1, 1, 1)
+        self.grid.addWidget(self.ScanValueSampleDepth, 3, 2, 1, 1)
+        self.grid.addWidget(self.ScanLabelNSlices, 3, 3, 1, 1)
+        self.grid.addWidget(self.ScanValueNSlices, 3, 4, 1, 1)
         # filesettings
-        self.grid.addWidget(self.ScanLabelFileName, 7, 0, 1, 1)
-        self.grid.addWidget(self.ScanEditFileName, 7, 1, 1, 1)
-        self.grid.addWidget(self.ScanNRounds, 7, 2, 1, 1)
-        self.grid.addWidget(self.ScanDoZStack, 7, 3, 1, 1)
+        self.grid.addWidget(self.ScanInfoLabel, 6, 0, 1, 5)
+        self.grid.addWidget(self.ScanInfoNRounds, 8, 0, 1, 2)
+        self.grid.addWidget(self.ScanInfoStartTime, 7, 0, 1, 2)
+        self.grid.addWidget(self.ScanInfoRoundStartTime, 7, 4, 1, 2)
+        self.grid.addWidget(self.ScanInfoTimeToNextRound, 8, 4, 1, 2)
+        self.grid.addWidget(self.ScanInfoCurrentWell, 8, 2, 1, 2)
+
         # autofocus
-        self.grid.addWidget(self.autofocusLabel, 8, 0, 1, 1)
+        # self.grid.addWidget(self.autofocusLabel, 8, 0, 1, 1)
         # self.grid.addWidget(self.autofocusRange, 8, 1, 1, 1) # Do not show for now. We don't use AF yet
         # self.grid.addWidget(self.autofocusSteps, 8, 2, 1, 1)
         # self.grid.addWidget(self.autofocusPeriod, 8, 3, 1, 1)
-        self.grid.addWidget(self.autofocusInitial, 9, 1, 1, 1)
+        self.grid.addWidget(self.autofocusInitialZLabel, 5, 3, 1, 2)
+        self.grid.addWidget(self.autofocusInitial, 5, 5, 1, 2)
         # self.grid.addWidget(self.autofocusSelectionLabel, 9, 2, 1, 1)
-        self.grid.addWidget(self.autofocusInitialZLabel, 9, 0, 1, 1)
         # self.grid.addWidget(self.autofocusLED1Checkbox, 9, 3, 1, 1)
         # start stop
-        self.grid.addWidget(self.ScanStartButton, 10, 0, 1, 1)
-        self.grid.addWidget(self.ScanStopButton, 10, 1, 1, 1)
-        self.grid.addWidget(self.ScanShowLastButton, 10, 2, 1, 1)
+        self.grid.addWidget(self.ScanStartButton, 5, 0, 2, 1)
+        self.grid.addWidget(self.ScanStopButton, 5, 1, 2, 1)
+        self.grid.addWidget(self.ScanShowLastButton, 5, 2, 2, 1)
         self.layer = None
 
         self.init_scan_list()
@@ -255,18 +304,36 @@ class DeckScanWidget(NapariHybridWidget):
                                                name=name, blending='additive')
         self.layer.data = im
 
+    def open_z_stack_options(self):
+        if bool(self.ScanDoZStack.isChecked()):
+            # z-stack
+            self.ScanLabelSampleDepth.setHidden(False)
+            self.ScanValueSampleDepth.setHidden(False)
+            self.ScanLabelNSlices.setHidden(False)
+            self.ScanValueNSlices.setHidden(False)
+            # self.grid.addWidget(self.ScanValueZmin, 1, 1, 1, 1) # Just use sample depth
+        else:
+            self.ScanLabelSampleDepth.setHidden(True)
+            self.ScanValueSampleDepth.setHidden(True)
+            self.ScanLabelNSlices.setHidden(True)
+            self.ScanValueNSlices.setHidden(True)
+        self.setLayout(self.grid)
+
     def getZStackValues(self):
-        valueZmin = -abs(float(self.ScanValueZmin.text()))
-        valueZmax = float(self.ScanValueZmax.text())
-        valueZsteps = float(self.ScanValueZsteps.text())
+        valueZdepth = float(self.ScanValueSampleDepth.text())
+        valueZslices = float(self.ScanValueNSlices.text())
         valueZenabled = bool(self.ScanDoZStack.isChecked())
 
-        return valueZmin, valueZmax, valueZsteps, valueZenabled
+        return valueZdepth, valueZslices, valueZenabled
 
     def getTimelapseValues(self):
-        ScanValueTimePeriod = float(self.ScanValueTimePeriod.text())
-        ScanValueTimeDuration = int(self.ScanValueTimeDuration.text())
-        return ScanValueTimePeriod, ScanValueTimeDuration
+        h = float(self.ScanValueTimePeriodHours.text())
+        m = float(self.ScanValueTimePeriodMinutes.text())
+        s = float(self.ScanValueTimePeriodSeconds.text())
+        ScanValueTimePeriod = h*3600 + m*60 + s # Total Time Period in seconds
+
+        ScanValueRounds = int(self.ScanValueRounds.text())
+        return ScanValueTimePeriod, ScanValueRounds
 
     def getFilename(self):
         ScanEditFileName = self.ScanEditFileName.text()
@@ -274,7 +341,16 @@ class DeckScanWidget(NapariHybridWidget):
 
     def setNImages(self, nRounds):
         nRounds2Do = self.getTimelapseValues()[-1]
-        self.ScanNRounds.setText('Timelapse progress: ' + str(nRounds) + " / " + str(nRounds2Do))
+        self.ScanInfoNRounds.setHidden(False)
+        self.ScanInfoNRounds.setText(f'Rounds: {str(nRounds)}/{str(nRounds2Do)}')
+
+    def update_widget_text(self, widget, text):
+        widget.setHidden(False)
+        widget.setText(text)
+
+    def show_info(self, info):
+        self.ScanInfoLabel.setHidden(False)
+        self.update_widget_text(self.ScanInfoLabel, info)
 
     # Copyright (C) 2020-2021 ImSwitch developers
     # This file is part of ImSwitch.
