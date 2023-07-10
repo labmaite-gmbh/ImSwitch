@@ -19,6 +19,7 @@ class DeckScanWidget(NapariHybridWidget):
 
     sigGoToClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigAddCurrentClicked = QtCore.Signal(str, str)  # (positionerName, axis)
+    sigAdjustFocusClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigAddClicked = QtCore.Signal(str, str)  # (positionerName, axis)
 
     sigPresetSelected = QtCore.Signal(str)  # (presetName)
@@ -45,6 +46,11 @@ class DeckScanWidget(NapariHybridWidget):
         self.autofocusInitial.selectAll()
         self.autofocusInitial.insert(str(value))
         # TODO: could update the whole table: z_focus and absolute_values
+
+
+    def set_table_item(self, row, col, item):
+        self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
+
 
     def get_all_positions(self):
         # TODO: implement

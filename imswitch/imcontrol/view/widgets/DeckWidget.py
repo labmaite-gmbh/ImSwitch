@@ -18,10 +18,6 @@ class DeckWidget(Widget):
     sigHomeClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigZeroClicked = QtCore.Signal(str, str)  # (positionerName, axis)
 
-    sigGoToClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-    sigAddCurrentClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-    sigAddClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-
     sigStepAbsoluteClicked = QtCore.Signal(str)
     sigHomeAxisClicked = QtCore.Signal(str, str)
     sigStopAxisClicked = QtCore.Signal(str, str)
@@ -186,12 +182,12 @@ class DeckWidget(Widget):
 
         # Create dictionary to store deck slots names (button texts)
         slots_buttons = {s: (0, i + 2) for i, s in enumerate(slots)}
-        for corrds, pos in slots_buttons.items():
-            if corrds in used_slots:
+        for slot_id, pos in slots_buttons.items():
+            if slot_id in used_slots:
                 # Do button if slot contains labware
-                self.deck_slots[corrds] = guitools.BetterPushButton(corrds)  # QtWidgets.QPushButton(corrds)
-                self.deck_slots[corrds].setFixedSize(25, 20)
-                self.deck_slots[corrds].setStyleSheet("QPushButton"
+                self.deck_slots[slot_id] = guitools.BetterPushButton(slot_id)  # QtWidgets.QPushButton(slot_id)
+                self.deck_slots[slot_id].setFixedSize(25, 20)
+                self.deck_slots[slot_id].setStyleSheet("QPushButton"
                                                       "{"
                                                       "background-color : grey; font-size: 14px"
                                                       "}"
@@ -201,17 +197,24 @@ class DeckWidget(Widget):
                                                       "}"
                                                       )
             else:
-                self.deck_slots[corrds] = QtWidgets.QLabel(corrds)  # QtWidgets.QPushButton(corrds)
-                self.deck_slots[corrds].setFixedSize(25, 20)
-                self.deck_slots[corrds].setStyleSheet("background-color: None; font-size: 14px")
-            layout.addWidget(self.deck_slots[corrds])
+                self.deck_slots[slot_id] = QtWidgets.QLabel(slot_id)  # QtWidgets.QPushButton(slot_id)
+                self.deck_slots[slot_id].setFixedSize(25, 20)
+                self.deck_slots[slot_id].setStyleSheet("background-color: None; font-size: 14px")
+            layout.addWidget(self.deck_slots[slot_id])
         self._deck_group_box.setMaximumHeight(120)
         self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                       QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
         self.select_labware(used_slots[0])
+        if len(used_slots) == 1 and "1" in self.deck_slots.keys():
+            self.deck_slots["1"].setHidden(True)
         self.main_grid_layout.addWidget(self._deck_group_box, 1, 5, 1, 9)
         self.setLayout(self.main_grid_layout)
+
+
+    def set_table_item(self, row, col, item):
+        self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
+
 
     def init_scan_list(
             self):  # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
@@ -343,7 +346,6 @@ class DeckWidget(Widget):
 
         return rows
 
-
     def add_current_position_to_scan(self):
         self.__logger.debug(f"Adding current position: {self.current_slot}, {self.current_well}")
         row_id = len(self._get_items())
@@ -351,15 +353,16 @@ class DeckWidget(Widget):
         self.scan_list.insertRow(row_id)
         if row_id == 0:
             self.first_z_focus = self.current_z_focus
-            self.scan_list.setItem(row_id, 3, QtWidgets.QTableWidgetItem(str(0)))
+            self.set_table_item(row_id, 3, 0)
         else:
             relative_z_focus = self.current_absolute_position[2] - self.first_z_focus
-            self.scan_list.setItem(row_id, 3, QtWidgets.QTableWidgetItem(str(relative_z_focus)))
+            self.set_table_item(row_id, 3, relative_z_focus)
 
-        self.scan_list.setItem(row_id, 0, QtWidgets.QTableWidgetItem(str(self.current_slot)))
-        self.scan_list.setItem(row_id, 1, QtWidgets.QTableWidgetItem(str(self.current_well)))
-        self.scan_list.setItem(row_id, 2, QtWidgets.QTableWidgetItem(str(self.current_offset)))
-        self.scan_list.setItem(row_id, 4, QtWidgets.QTableWidgetItem(str(self.current_absolute_position)))
+
+        self.set_table_item(row_id, 0, self.current_slot)
+        self.set_table_item(row_id, 1, self.current_well)
+        self.set_table_item(row_id, 2, self.current_offset)
+        self.set_table_item(row_id, 4, self.current_absolute_position)
         self.scan_list_items = row_id
 
         for row in range(self.scan_list.rowCount()):
@@ -540,6 +543,7 @@ class DeckWidget(Widget):
 # From https://stackoverflow.com/questions/26227885/drag-and-drop-rows-within-qtablewidget
 class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigGoToTableClicked = QtCore.Signal(tuple)
+    sigAdjustFocusClicked = QtCore.Signal(int)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -566,15 +570,18 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             menu = QtWidgets.QMenu()
             goto_action = menu.addAction("Go To")
             delete_action = menu.addAction("Delete")
+            adjust_focus_action = menu.addAction("Adjust Focus")
 
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
-                self.got_to_action(row)
+                self.go_to_action(row)
                 print(f"{row}, {column}")
             elif action == delete_action:
                 self.deleteSelected(row)
+            elif action == adjust_focus_action:
+                self.adjust_focus_action(row)
 
-    def got_to_action(self, row):
+    def go_to_action(self, row):
         # TODO: avoid hardcoded 4: Absolute
         if self.item(row, 4) is not None:
             absolute_position = tuple(map(float, self.item(row, 4).text().strip('()').split(',')))
@@ -582,6 +589,16 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             self.sigGoToTableClicked.emit(absolute_position)
         else:
             raise ValueError(f"Item in row {row} is of type None")
+        
+    def adjust_focus_action(self, row):
+        # TODO: avoid hardcoded 4: Absolute
+        if self.item(row, 4) is not None:
+            absolute_position = tuple(map(float, self.item(row, 4).text().strip('()').split(',')))
+            print(f"Adjusting focus at row {row} ({absolute_position[2]} um)")
+            self.sigAdjustFocusClicked.emit(row)
+        else:
+            raise ValueError(f"Item in row {row} is of type None")
+        
     def deleteSelected(self, row):
         self.removeRow(row)
         print(f"Deleted row {row}")

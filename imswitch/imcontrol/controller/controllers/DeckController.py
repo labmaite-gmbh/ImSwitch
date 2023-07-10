@@ -51,9 +51,21 @@ class DeckController(LiveUpdatedController):
         self._widget.init_scan_list()
         self.connect_all_buttons()
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
+        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
 
     def go_to_position_in_table(self, absolute_position):
         self.move(new_position=Point(*absolute_position))
+
+    def adjust_focus_in_table(self, row):
+        _,_,z_new = self.positioner.get_position()
+        if self._widget.scan_list.item(row, 4) is not None:
+            x_old,y_old,z_old = tuple(map(float, self._widget.scan_list.item(row, 4).text().strip('()').split(',')))
+            z_focus_old = float(self._widget.scan_list.item(row, 3).text())
+        else:
+            raise ValueError(f"Item in row {row} is of type None")
+        self.__logger.info(f"Changing focus at row {row}: {z_old} um -> {z_new}")
+        self._widget.set_table_item(row=row, col=3, item= z_focus_old + (z_new-z_old) )
+        self._widget.set_table_item(row=row, col=4, item=(x_old, y_old, z_new))
 
     @property
     def selected_well(self):
