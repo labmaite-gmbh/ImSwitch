@@ -129,7 +129,7 @@ class DeckScanController(LiveUpdatedController):
 
     def displayImage(self):
         # a bit weird, but we cannot update outside the main thread
-        name = "tilescanning"
+        name = "Last Frame"
         self._widget.setImage(self.detector.getLatestFrame(), colormap="gray", name=name, pixelsize=(1, 1),
                               translation=(0, 0))
 
@@ -180,18 +180,31 @@ class DeckScanController(LiveUpdatedController):
         # start the timelapse
         # get parameters from GUI
         self.zStackDepth, self.zStackStep, self.zStackEnabled = self._widget.getZStackValues()
-        if self.zStackEnabled and self.zStackDepth<=0:
+        # TODO: populate positions_list with scan_list and give it to takeTimelapse
+        positions_list = self._widget.get_all_positions()
+        self.timePeriod, self.nDuration = self._widget.getTimelapseValues()
+        valid_start = True
+        if positions_list < 1:
+            self.__logger.debug("Scan list empty: please load a valid .csv file before starting the scan.")
+            self._widget.show_info("Scan list empty: please load a valid .csv file before starting the scan.")
+            valid_start = False
+        if not self.LEDValue:
+            self.__logger.debug("LED intensity needs to be set before starting scan.")
+            self._widget.show_info("LED intensity needs to be set before starting scan.")
+            valid_start = False
+        if self.zStackEnabled and self.zStackDepth <= 0:
             self.__logger.debug("Z-Stack enabled: sample depth must be positive.")
             self._widget.show_info("Z-Stack enabled: sample depth must be positive.")
-            self.isScanrunning = False
-            self._widget.ScanStartButton.setEnabled(True)
-
-        if not self.isScanrunning and self.LEDValue > 0:
+            valid_start = False
+        if not self.timePeriod:
+            self.__logger.debug("Scan Period needs to be set before starting scan.")
+            self._widget.show_info("Scan Period needs to be set before starting scan.")
+            valid_start = False
+        if not self.isScanrunning and valid_start:
             self.nRounds = 0
             self._widget.show_info("Starting timelapse...")
             self.switchOffIllumination()
 
-            self.timePeriod, self.nDuration = self._widget.getTimelapseValues()
             self.experiment_name = self._widget.getFilename()
             self.ScanDate = datetime.now().strftime("%Y%m%d_%H%M%S")
             # store old values for later
@@ -201,22 +214,9 @@ class DeckScanController(LiveUpdatedController):
             self._widget.ScanShowLastButton.setEnabled(False)
             # TODO: freeze scan_list -> edit shouldn´t be available while running.
             # start the timelapse - otherwise we have to wait for the first run after timePeriod to take place..
-            # TODO: populate positions_list with scan_list and give it to takeTimelapse
-            positions_list = self._widget.get_all_positions()
             self.takeTimelapse(self.timePeriod, positions_list)
-            # if len(positions_list):
-            #     self.takeTimelapse(self.timePeriod, positions_list)
-            # else:
-            #     self.__logger.debug("You need to define at least one position to scan.")
-            #     self._widget.show_info("You need to define at least one position to scan.")
-            #     self.isScanrunning = False
-            #     self._widget.ScanStartButton.setEnabled(True)
-
         else:
             self.isScanrunning = False
-            if self.LEDValue == 0:
-                self.__logger.debug("LED intensity needs to be set before starting scan.")
-                self._widget.show_info("LED intensity needs to be set before starting scan.")
             self._widget.ScanStartButton.setEnabled(True)
 
     def takeTimelapse(self, tperiod, positions_list):

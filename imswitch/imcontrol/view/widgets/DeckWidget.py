@@ -15,9 +15,6 @@ class DeckWidget(Widget):
     sigStepDownClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigsetSpeedClicked = QtCore.Signal(str, str)  # (positionerName, axis)
 
-    sigHomeClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-    sigZeroClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-
     sigStepAbsoluteClicked = QtCore.Signal(str)
     sigHomeAxisClicked = QtCore.Signal(str, str)
     sigStopAxisClicked = QtCore.Signal(str, str)
@@ -60,6 +57,20 @@ class DeckWidget(Widget):
                 writer.writerow(rowdata)
         # else:
         #     self.__logger.debug("Empty path: handleSave")
+        self.open_in_scanner_window()
+
+    def open_in_scanner_window(self):
+        choice = QtWidgets.QMessageBox.question(self, 'Next action',
+                                            "Do you want to load the current scan list in the Deck Scanner?",
+                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if choice == QtWidgets.QMessageBox.Yes:
+            print("Open table in DeckScanner")
+            QtWidgets.QMessageBox.information(self, "Scan list loaded in DeckScanner.",
+                                              'Scan list loaded. Open the DeckScanner.',
+                                              QtWidgets.QMessageBox.Ok)
+            print("Click DeckScanner")
+        else:
+            pass
 
     def handleOpen(self):
         path = QtWidgets.QFileDialog.getOpenFileName(
@@ -237,8 +248,8 @@ class DeckWidget(Widget):
         self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
         # self.add_current_btn.setFixedHeight(30)
         # self.pos_in_well_lined = QtWidgets.QLineEdit("1")
-        self.beacons_nx = QtWidgets.QLineEdit("2")
-        self.beacons_ny = QtWidgets.QLineEdit("2")
+        self.beacons_nx = QtWidgets.QLineEdit("1")
+        self.beacons_ny = QtWidgets.QLineEdit("1")
         self.beacons_dx = QtWidgets.QLineEdit("300")
         self.beacons_dy = QtWidgets.QLineEdit("300")
         self.beacons_add = guitools.BetterPushButton('ADD')

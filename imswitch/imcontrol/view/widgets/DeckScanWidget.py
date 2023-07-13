@@ -53,9 +53,8 @@ class DeckScanWidget(NapariHybridWidget):
 
 
     def get_all_positions(self):
-        # TODO: implement
-
-        return []
+        # TODO: implement. Return amount of positions for now.
+        return self.scan_list_items
 
     def init_scan_list(self): #, detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
         self.scan_list = TableWidgetDragRows()
