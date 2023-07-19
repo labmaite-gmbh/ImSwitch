@@ -7,6 +7,7 @@ from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets
 
 from .basewidgets import Widget
+from ...controller.controllers.DeckController import ScanPoint
 
 
 class DeckWidget(Widget):
@@ -36,15 +37,14 @@ class DeckWidget(Widget):
 
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
-
     # https://stackoverflow.com/questions/12608830/writing-a-qtablewidget-to-a-csv-or-xls
     # Extra blank row issue: https://stackoverflow.com/questions/3348460/csv-file-written-with-python-has-blank-lines-between-each-row
-    def handleSave(self):
+    def handleSave_(self):
         path = QtWidgets.QFileDialog.getSaveFileName(
             self, 'Save File', '', 'CSV(*.csv)')
         # if not path[0] != "":
-        with open(path[0], 'w', newline='') as stream:
-            writer = csv.writer(stream)
+        with open(path[0], 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
             for row in range(self.scan_list.rowCount()):
                 rowdata = []
                 for column in range(self.scan_list.columnCount()):
@@ -59,10 +59,29 @@ class DeckWidget(Widget):
         #     self.__logger.debug("Empty path: handleSave")
         self.open_in_scanner_window()
 
+    def handleSave(self):
+        path = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save File', '', 'CSV(*.csv)')
+        # if not path[0] != "":
+        columns = range(self.scan_list.columnCount())
+        header = [self.scan_list.horizontalHeaderItem(column).text()
+                  for column in columns]
+        with open(path[0], 'w') as csvfile:
+            writer = csv.writer(
+                csvfile, dialect='excel', lineterminator='\n')
+            writer.writerow(header)
+            for row in range(self.scan_list.rowCount()):
+                writer.writerow(
+                    self.scan_list.item(row, column).text()
+                    for column in columns)
+        # else:
+        #     self.__logger.debug("Empty path: handleSave")
+        self.open_in_scanner_window()
+
     def open_in_scanner_window(self):
         choice = QtWidgets.QMessageBox.question(self, 'Next action',
-                                            "Do you want to load the current scan list in the Deck Scanner?",
-                                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+                                                "Do you want to load the current scan list in the Deck Scanner?",
+                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if choice == QtWidgets.QMessageBox.Yes:
             print("Open table in DeckScanner")
             QtWidgets.QMessageBox.information(self, "Scan list loaded in DeckScanner.",
@@ -72,26 +91,54 @@ class DeckWidget(Widget):
         else:
             pass
 
-    def handleOpen(self):
+    def handleOpen_(self):
         path = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Open File', '', 'CSV(*.csv)')
         # if not path.isEmpty():
-        with open(path[0], 'r') as stream:
+        with open(path[0], 'r') as csvfile:
+            self.scan_list.clear()
             self.scan_list.setHorizontalHeaderLabels(["Slot", "Well", "Offset", "Z_focus", "Absolute"])
             self.scan_list.setRowCount(0)
             self.scan_list_items = 0
-            for rowdata in csv.reader(stream):
+            for rowdata in csv.reader(csvfile):
                 self.scan_list.insertRow(self.scan_list_items)
                 for column, data in enumerate(rowdata):
                     item = QtWidgets.QTableWidgetItem(data)
                     self.scan_list.setItem(self.scan_list_items, column, item)
                 self.scan_list_items += 1
 
+    def handleOpen(self):
+        path = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Open File', '', 'CSV(*.csv)')
+        # if not path.isEmpty():
+        self.scan_list.clear()
+        self.scan_list.setRowCount(0)
+        self.scan_list_items = 0
+        with open(path[0], 'r') as csvfile:
+            reader = csv.reader(csvfile)
+            header = next(reader)
+            self.scan_list.setColumnCount(len(header))
+            self.scan_list.setHorizontalHeaderLabels(header)
+            for row, values in enumerate(reader):
+                self.scan_list.insertRow(row)
+                for column, value in enumerate(values):
+                    self.scan_list.setItem(
+                        row, column, QtWidgets.QTableWidgetItem(value))
+
     def handleClear(self):
         self.scan_list.clearContents()
         self.scan_list.setRowCount(0)
         self.scan_list_items = 0
 
+    def display_open_file_window(self):
+        path = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Open File', '', 'CSV(*.csv)')
+        return path
+
+    def display_save_file_window(self):
+        path = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save File', '', 'CSV(*.csv)')
+        return path
 
     def select_well(self, well):
         for well_id, btn in self.wells.items():
@@ -166,7 +213,7 @@ class DeckWidget(Widget):
         # TODO: implement ZERO -> solve ESP32StageManager/Motor issue with set_motor
         self.zero = guitools.BetterPushButton(text="ZERO\nZ-AXIS")  # QtWidgets.QPushButton(corrds)
         self.zero.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
+                                QtWidgets.QSizePolicy.Expanding)
         self.zero.setMinimumWidth(120)
         self.zero.setMinimumHeight(40)
         self.zero.setMaximumHeight(60)
@@ -199,14 +246,14 @@ class DeckWidget(Widget):
                 self.deck_slots[slot_id] = guitools.BetterPushButton(slot_id)  # QtWidgets.QPushButton(slot_id)
                 self.deck_slots[slot_id].setFixedSize(25, 20)
                 self.deck_slots[slot_id].setStyleSheet("QPushButton"
-                                                      "{"
-                                                      "background-color : grey; font-size: 14px"
-                                                      "}"
-                                                      "QPushButton::pressed"
-                                                      "{"
-                                                      "background-color : red; font-size: 14px"
-                                                      "}"
-                                                      )
+                                                       "{"
+                                                       "background-color : grey; font-size: 14px"
+                                                       "}"
+                                                       "QPushButton::pressed"
+                                                       "{"
+                                                       "background-color : red; font-size: 14px"
+                                                       "}"
+                                                       )
             else:
                 self.deck_slots[slot_id] = QtWidgets.QLabel(slot_id)  # QtWidgets.QPushButton(slot_id)
                 self.deck_slots[slot_id].setFixedSize(25, 20)
@@ -214,7 +261,7 @@ class DeckWidget(Widget):
             layout.addWidget(self.deck_slots[slot_id])
         self._deck_group_box.setMaximumHeight(120)
         self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                      QtWidgets.QSizePolicy.Expanding)
+                                           QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
         self.select_labware(used_slots[0])
         if len(used_slots) == 1 and "1" in self.deck_slots.keys():
@@ -222,70 +269,18 @@ class DeckWidget(Widget):
         self.main_grid_layout.addWidget(self._deck_group_box, 1, 5, 1, 9)
         self.setLayout(self.main_grid_layout)
 
-
     def set_table_item(self, row, col, item):
         self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
 
-
-    def init_scan_list(
-            self):  # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
-        self.scan_list = TableWidgetDragRows()
-        self.scan_list.setColumnCount(5)
-        self.scan_list.setHorizontalHeaderLabels(["Slot", "Well", "Offset", "Z_focus", "Absolute"])
-        self.scan_list_items = 0
-        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
-
-        self._actions_widget = QtWidgets.QGroupBox("Actions")
-        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
+    def init_beacons(self):
         self.beacons_widget = QtWidgets.QGroupBox("Beacons")
-
-        actions_layout = QtWidgets.QHBoxLayout()
-        scan_list_actions_layout = QtWidgets.QHBoxLayout()
         beacons_layout = QtWidgets.QGridLayout()
-
-        self.goto_btn = guitools.BetterPushButton('GO TO')
-        # self.goto_btn.setFixedHeight(30)
-        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
-        # self.add_current_btn.setFixedHeight(30)
-        # self.pos_in_well_lined = QtWidgets.QLineEdit("1")
         self.beacons_nx = QtWidgets.QLineEdit("1")
         self.beacons_ny = QtWidgets.QLineEdit("1")
         self.beacons_dx = QtWidgets.QLineEdit("300")
         self.beacons_dy = QtWidgets.QLineEdit("300")
         self.beacons_add = guitools.BetterPushButton('ADD')
         self.beacons_selected_well = QtWidgets.QLabel("<Well>")
-        # self.pos_in_well_lined.setFixedHeight(30)
-        # self.beacons_add.setFixedHeight(30)
-
-        self.buttonOpen = guitools.BetterPushButton('Open')
-        self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                      QtWidgets.QSizePolicy.Expanding)
-        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
-        self.buttonSave = guitools.BetterPushButton('Save')
-        self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                      QtWidgets.QSizePolicy.Expanding)
-        self.buttonSave.setStyleSheet("background-color : gray; color: black")
-        self.buttonClear = guitools.BetterPushButton('Clear')
-        self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                      QtWidgets.QSizePolicy.Expanding)
-        self.buttonClear.setStyleSheet("background-color : gray; color: black")
-
-        self.buttonOpen.clicked.connect(self.handleOpen)
-        self.buttonSave.clicked.connect(self.handleSave)
-        self.buttonClear.clicked.connect(self.handleClear)
-
-        # actions_layout.addWidget(self.goto_btn, 0)
-        # actions_layout.addWidget(self.add_current_btn, 1)
-        # actions_layout.addWidget(QtWidgets.QLabel("#Pos. in well"), 2)
-        # actions_layout.addWidget(self.pos_in_well_lined, 3)
-        # actions_layout.addWidget(self.beacons_add, 4)
-        # actions_layout.addWidget(self.buttonOpen, 5)
-        # actions_layout.addWidget(self.buttonSave, 6)
-        # actions_layout.addWidget(self.buttonClear, 7)
-
-        actions_layout.addWidget(self.goto_btn)
-        actions_layout.addWidget(self.add_current_btn)
-
         # beacons_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 0, 1, 1)
         beacons_layout.addWidget(QtWidgets.QLabel("Nx x Ny"), 0, 0, 1, 1)
         beacons_layout.addWidget(QtWidgets.QLabel("Dx x Dy [um]"), 1, 0, 1, 1)
@@ -296,6 +291,48 @@ class DeckWidget(Widget):
         beacons_layout.addWidget(self.beacons_dy, 1, 2, 1, 1)
         beacons_layout.addWidget(self.beacons_selected_well, 0, 3, 1, 1)
         beacons_layout.addWidget(self.beacons_add, 1, 3, 1, 1)
+        self.beacons_widget.setMaximumHeight(120)
+        self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
+        self.beacons_widget.setLayout(beacons_layout)
+        self.main_grid_layout.addWidget(self.beacons_widget, 1, 0, 3, 5)
+
+
+    def init_scan_list(self):
+        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
+        self.scan_list = TableWidgetDragRows()
+        self.scan_list.setColumnCount(5)
+        self.scan_list.setHorizontalHeaderLabels(self.scan_list.columns)
+        self.scan_list_items = 0
+        self.scan_list.setColumnHidden(0, True)
+        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
+        self.scan_list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        self._actions_widget = QtWidgets.QGroupBox("Actions")
+        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
+
+        actions_layout = QtWidgets.QHBoxLayout()
+        scan_list_actions_layout = QtWidgets.QHBoxLayout()
+
+        self.goto_btn = guitools.BetterPushButton('GO TO')
+        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
+
+
+        self.buttonOpen = guitools.BetterPushButton('Open')
+        self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Expanding)
+        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
+        self.buttonSave = guitools.BetterPushButton('Save')
+        self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Expanding)
+        self.buttonSave.setStyleSheet("background-color : gray; color: black")
+        self.buttonClear = guitools.BetterPushButton('Clear')
+        self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                       QtWidgets.QSizePolicy.Expanding)
+        self.buttonClear.setStyleSheet("background-color : gray; color: black")
+
+        actions_layout.addWidget(self.goto_btn)
+        actions_layout.addWidget(self.add_current_btn)
         scan_list_actions_layout.addWidget(self.buttonOpen)
         scan_list_actions_layout.addWidget(self.buttonSave)
         scan_list_actions_layout.addWidget(self.buttonClear)
@@ -303,17 +340,11 @@ class DeckWidget(Widget):
         self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                                     QtWidgets.QSizePolicy.Expanding)
         self.scan_list_actions_widget.setMaximumHeight(60)
-
-        self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
-
         self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
+                                           QtWidgets.QSizePolicy.Expanding)
         # self._actions_widget.setMaximumWidth(140)
         self._actions_widget.setMaximumHeight(60)
-        self.beacons_widget.setMaximumHeight(120)
         self._actions_widget.setLayout(actions_layout)
-        self.beacons_widget.setLayout(beacons_layout)
         self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
 
         self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
@@ -323,25 +354,7 @@ class DeckWidget(Widget):
 
         self.main_grid_layout.addWidget(self.scan_list, 6, 0, 1, 14)
         self.main_grid_layout.addWidget(self._actions_widget, 4, 0, 1, 5)
-        self.main_grid_layout.addWidget(self.beacons_widget, 1, 0, 3, 5)
         self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 5)
-
-    def add_position_to_scan(self, slot, well, offset, z_focus, absolute_position):
-        # TODO: forward it to table: table logic inside table.
-        self.__logger.debug(f"Adding well: {slot}, {well}")
-        self.scan_list.insertRow(self.scan_list_items)
-        if self.scan_list_items == 0:
-            self.first_z_focus = z_focus
-            self.scan_list.setItem(self.scan_list_items, 3, QtWidgets.QTableWidgetItem(str(z_focus)))
-        else:
-            relative_z_focus = absolute_position[2] - self.first_z_focus
-            self.scan_list.setItem(self.scan_list_items, 3, QtWidgets.QTableWidgetItem(str(relative_z_focus)))
-
-        self.scan_list.setItem(self.scan_list_items, 0, QtWidgets.QTableWidgetItem(str(slot)))
-        self.scan_list.setItem(self.scan_list_items, 1, QtWidgets.QTableWidgetItem(str(well)))
-        self.scan_list.setItem(self.scan_list_items, 2, QtWidgets.QTableWidgetItem(str(offset)))
-        self.scan_list.setItem(self.scan_list_items, 4, QtWidgets.QTableWidgetItem(str(absolute_position)))
-        self.scan_list_items += 1
 
     def _get_items(self):
         rows = []
@@ -357,7 +370,7 @@ class DeckWidget(Widget):
 
         return rows
 
-    def add_current_position_to_scan(self):
+    def add_current_position_to_scan_(self):
         self.__logger.debug(f"Adding current position: {self.current_slot}, {self.current_well}")
         row_id = len(self._get_items())
 
@@ -368,7 +381,6 @@ class DeckWidget(Widget):
         else:
             relative_z_focus = self.current_absolute_position[2] - self.first_z_focus
             self.set_table_item(row_id, 3, relative_z_focus)
-
 
         self.set_table_item(row_id, 0, self.current_slot)
         self.set_table_item(row_id, 1, self.current_well)
@@ -461,7 +473,7 @@ class DeckWidget(Widget):
             self.numPositioners += 1
 
         self._positioner_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
+                                              QtWidgets.QSizePolicy.Expanding)
         self._positioner_widget.setLayout(layout)
         self.main_grid_layout.addWidget(self._positioner_widget, 0, 0, 1, 14)
 
@@ -541,7 +553,8 @@ class DeckWidget(Widget):
 
     def updatePosition(self, positionerName, axis, position):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
-        self.pars['Position' + parNameSuffix].setText(f'<strong>{round(position)} um</strong>') # TODO: depends if um or mm!
+        self.pars['Position' + parNameSuffix].setText(
+            f'<strong>{round(position)} um</strong>')  # TODO: depends if um or mm!
 
     def updateSpeed(self, positionerName, axis, speed):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
@@ -553,13 +566,22 @@ class DeckWidget(Widget):
 
 # From https://stackoverflow.com/questions/26227885/drag-and-drop-rows-within-qtablewidget
 class TableWidgetDragRows(QtWidgets.QTableWidget):
-    sigGoToTableClicked = QtCore.Signal(tuple)
+    sigGoToTableClicked = QtCore.Signal(int)
     sigAdjustFocusClicked = QtCore.Signal(int)
+    sigDeleteRowClicked = QtCore.Signal(int)
+    sigSelectedDragRows = QtCore.Signal(list, int) # list of selected rows, position to drag to.
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.columns = ["Slot", "Well", "Offset","Z_focus", "Absolute", "Pos_idx"]
+        self.columns = ["Slot", "Well", "Offset", "Z_focus", "Absolute", "Pos_idx"]
+        self.columns_map_dict = {
+            "Slot": 0, "Well": 1, "Offset": 3, "Z_focus":4, "Absolute":5, "Pos_idx":2
+        }
+        self.setColumnCount(len(self.columns))
+        self.setHorizontalHeaderLabels(self.columns)
+        self.scan_list_items = 0
+        self.setColumnHidden(0, True)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -571,8 +593,33 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
 
+        self.horizontalHeader().sectionClicked.connect(self.onHorizontalHeaderClicked)
+
+        self.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
+        self.horizontalHeader().customContextMenuRequested.connect(self.onHorizontalHeaderClicked)
+
+    def onHorizontalHeaderClicked(self, column_index):
+        if self.selectionModel().selection().indexes():
+            for i in self.selectionModel().selection().indexes():
+                column = i.column()
+            menu = QtWidgets.QMenu()
+            goto_action = menu.addAction("Go To")
+            delete_action = menu.addAction("Delete")
+            adjust_focus_action = menu.addAction("Adjust Focus")
+
+            action = menu.exec_(column_index)
+            if action == goto_action:
+                self.go_to_action(row)
+                print(f"{row}, {column}")
+            elif action == delete_action:
+                self.deleteSelected(row)
+            elif action == adjust_focus_action:
+                self.adjust_focus_action(row)
+
+
+
     def get_first_z_focus(self):
-        return float(self.item(0,3).text())
+        return float(self.item(0, 3).text())
 
     def contextMenuEvent(self, event):
         if self.selectionModel().selection().indexes():
@@ -593,26 +640,13 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.adjust_focus_action(row)
 
     def go_to_action(self, row):
-        # TODO: avoid hardcoded 4: Absolute
-        if self.item(row, 4) is not None:
-            absolute_position = tuple(map(float, self.item(row, 4).text().strip('()').split(',')))
-            print(f"Go to position {absolute_position}")
-            self.sigGoToTableClicked.emit(absolute_position)
-        else:
-            raise ValueError(f"Item in row {row} is of type None")
-        
+        self.sigGoToTableClicked.emit(row)
+
     def adjust_focus_action(self, row):
-        # TODO: avoid hardcoded 4: Absolute
-        if self.item(row, 4) is not None:
-            absolute_position = tuple(map(float, self.item(row, 4).text().strip('()').split(',')))
-            print(f"Adjusting focus at row {row} ({absolute_position[2]} um)")
-            self.sigAdjustFocusClicked.emit(row)
-        else:
-            raise ValueError(f"Item in row {row} is of type None")
-        
+        self.sigAdjustFocusClicked.emit(row)
+
     def deleteSelected(self, row):
-        self.removeRow(row)
-        print(f"Deleted row {row}")
+        self.sigDeleteRowClicked.emit(row)
 
     def dropEvent(self, event):
         if not event.isAccepted() and event.source() == self:

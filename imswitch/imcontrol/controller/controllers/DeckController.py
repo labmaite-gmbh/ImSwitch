@@ -1,9 +1,13 @@
+import dataclasses
 import json
 import time
 from functools import partial
 from typing import Optional
 from itertools import product
+import csv
+from typing import Union, Dict, Tuple, List, Optional
 
+import pandas as pd
 import numpy as np
 from imswitch.imcommon.framework import Signal
 from imswitch.imcommon.model import initLogger, APIExport
@@ -23,6 +27,21 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 
+@dataclasses.dataclass
+class ScanPoint:
+    labware: str
+    slot: int
+    well: str
+    position_x: float
+    position_y: float
+    position_z: float
+    offset_from_center_x: float
+    offset_from_center_y: float
+    relative_focus_z: float
+
+
+# dict = dataclasses.asdict(ScanPoint)
+
 class DeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
@@ -37,8 +56,6 @@ class DeckController(LiveUpdatedController):
         deck_layout = json.load(open(ot_info["deck_file"], "r"))
 
         self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
-        self.default_positions_in_well = {key: tuple(value) for key, value in
-                                          self._setupInfo.deck["OpentronsDeck"]["default_positions"].items()}
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
         # Has control over positioner
@@ -46,26 +63,149 @@ class DeckController(LiveUpdatedController):
         #
         self.selected_slot = None
         self.selected_well = None
+        self.relative_focal_plane = None
         # self.scanner = LabwareScanner(self.positioner, self.deck, self.labwares, _objectiveRadius)
         self._widget.initialize_deck(self.deck_definition.deck, self.deck_definition.labwares)
         self._widget.init_scan_list()
-        self.connect_all_buttons()
+        self._widget.init_beacons()
+        self.scan_table: List[ScanPoint] = []
+        # Connect widget´s buttons
+        self.connect_home()
+        self.connect_zero()
+        self.connect_deck_slots()
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
+        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_table)
         self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
+        self._widget.buttonOpen.clicked.connect(self.open_scan_table_from_file)
+        self._widget.buttonSave.clicked.connect(self.save_scan_table_to_file)
+        self._widget.buttonClear.clicked.connect(self.clear_scan_table)
+        self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
+        self._widget.beacons_add.clicked.connect(self.add_beacons)
 
-    def go_to_position_in_table(self, absolute_position):
-        self.move(new_position=Point(*absolute_position))
+    def add_beacons(self):
+        try:
+            nx, ny = int(self._widget.beacons_nx.text()), int(self._widget.beacons_ny.text())
+            dx, dy = int(self._widget.beacons_dx.text()), int(self._widget.beacons_dy.text())
+            x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
+            _, _, z = Point(*self.positioner.get_position())
+            x, y, z = self.translate_position(Point(x, y, z))  # Positioner value
+            xx, yy = [dx * (i - (nx - 1) / 2) for i in range(nx)], [dy * (i - (ny - 1) / 2) for i in range(ny)]
+            for xi, yi in product(xx, yy):
+                point_to_scan = self.parse_position(Point(x=xi + x, y=yi + y, z=z))
+                self.scan_table.append(point_to_scan)
+            self.update_table_in_widget()
+        except Exception as e:
+            self.__logger.debug(f"No well selected: Please, select a well before adding beacons. {e}")
+
+    def parse_position(self, current_position: Point) -> ScanPoint:
+        current_position = self.retranslate_position(current_position)
+        current_slot = self.deck_definition.get_slot(current_position)
+        current_well = self.deck_definition.get_closest_well(current_position)
+        well_position = self.deck_definition.get_well_position(current_slot, current_well)  # Deck measurement
+        well_position = self.translate_position(well_position)  # Positioner value
+        zero = self.translate_position(10e-4)  # Positioner value
+        current_position = self.translate_position(current_position)  # Positioner value
+        offset = tuple([b - a if np.abs(b - a) > zero else 0.00 for (a, b) in
+                        zip(well_position,
+                            current_position)][:2])
+        labware = self.deck_definition.labwares[current_slot].load_name
+        if not self.scan_table:  # First positions holds relative zero
+            self.relative_focal_plane = current_position[2]
+        z_focus = current_position[2] - self.relative_focal_plane
+        return ScanPoint(labware=labware, slot=int(current_slot), well=current_well,
+                         position_x=current_position[0], position_y=current_position[1],
+                         position_z=current_position[2],
+                         offset_from_center_x=offset[0], offset_from_center_y=offset[1],
+                         relative_focus_z=z_focus)
+
+    def add_current_position_to_scan(self):
+        # self.__logger.debug(f"Adding current position: {self.current_slot}, {self.current_well}")
+        current_position = Point(*self.positioner.get_position())
+        try:
+            current_point = self.parse_position(current_position)
+            self.scan_table.append(current_point)
+            self.update_table_in_widget()
+
+        except Exception as e:
+            self.__logger.debug(f"Error when updating values. {e}")
+
+    def update_table_in_widget(self):
+        self._widget.scan_list.clear()
+        self._widget.scan_list.setRowCount(0)
+        self._widget.scan_list_items = 0
+        self._widget.scan_list.setColumnCount(len(self._widget.scan_list.columns))
+        self._widget.scan_list.setHorizontalHeaderLabels(self._widget.scan_list.columns)
+        for row_i, row_values in enumerate(self.scan_table):
+            self.add_row_in_widget(row_i, row_values)
+
+    def add_row_in_widget(self, row_id, current_point):
+        self._widget.scan_list.insertRow(row_id)
+        self._widget.set_table_item(row_id, 0, current_point.slot)
+        self._widget.set_table_item(row_id, 1, current_point.well)
+        self._widget.set_table_item(row_id, 2, (
+        round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
+        self._widget.set_table_item(row_id, 3, round(current_point.relative_focus_z))
+        self._widget.set_table_item(row_id, 4,
+                                    (round(current_point.position_x), round(current_point.position_y),
+                                     round(current_point.position_z)))
+        self._widget.scan_list_items += 1
+
+    def clear_scan_table(self):
+        self.scan_table = []
+        self._widget.scan_list.clear()
+        self._widget.scan_list.setHorizontalHeaderLabels(self._widget.scan_list.columns)
+
+    def open_scan_table_from_file(self):
+        path = self._widget.display_open_file_window()
+        # if not path.isEmpty():
+        self.scan_table = []
+        # load table from path
+        with open(path[0], 'r') as csvfile:
+            scan_dict = pd.read_csv(csvfile, sep=",").to_dict()
+
+            for k, v in scan_dict.items():
+                ...
+
+            reader = csv.reader(csvfile)
+            header = next(reader)
+            for row, values in enumerate(reader):
+                self.scan_table.append(values)
+
+        self.update_table_in_widget()
+
+    def save_scan_table_to_file(self):
+        path = self._widget.display_save_file_window()
+        [dataclasses.asdict(i) for i in self.scan_table]
+
+        self._widget.open_in_scanner_window()
+
+    def go_to_position_in_table(self, row):
+        abs_pos = self.scan_table[row].position_x, self.scan_table[row].position_y, self.scan_table[row].position_z
+        self.move(new_position=Point(*abs_pos))
+
+    def delete_position_in_table(self, row):
+        deleted_point = self.scan_table.pop(row)
+        self.__logger.debug(f"Deleting row {row}: {deleted_point}")
+        self.update_table_in_widget()
 
     def adjust_focus_in_table(self, row):
-        _,_,z_new = self.positioner.get_position()
-        if self._widget.scan_list.item(row, 4) is not None:
-            x_old,y_old,z_old = tuple(map(float, self._widget.scan_list.item(row, 4).text().strip('()').split(',')))
-            z_focus_old = float(self._widget.scan_list.item(row, 3).text())
+        _, _, z_new = self.positioner.get_position()
+        z_old = self.scan_table[row].position_z
+        if z_old == z_new:
+            return
+        if row == 0:
+            self.scan_table[row].position_z = z_new
+            self.relative_focal_plane = z_new
+            for i_row, values in enumerate(self.scan_table[1:]):
+                print(values)
+                self.scan_table[1:][i_row].relative_focus_z = (self.scan_table[1:][i_row].position_z - self.relative_focal_plane)
+            # print("Propagate values below...")
         else:
-            raise ValueError(f"Item in row {row} is of type None")
-        self.__logger.info(f"Changing focus at row {row}: {z_old} um -> {z_new}")
-        self._widget.set_table_item(row=row, col=3, item= z_focus_old + (z_new-z_old) )
-        self._widget.set_table_item(row=row, col=4, item=(x_old, y_old, z_new))
+            z_old = self.scan_table[row].position_z
+            self.scan_table[row].position_z = z_new
+            self.scan_table[row].relative_focus_z = (z_new-self.relative_focal_plane)
+        self.update_table_in_widget()
+
 
     @property
     def selected_well(self):
@@ -87,8 +227,6 @@ class DeckController(LiveUpdatedController):
         self.connect_home()
         self.connect_zero()
         self.connect_deck_slots()
-        self.connect_add_current_position()
-        self.connect_line_edit()
 
     def initialize_positioners(self):
         # Has control over positioner
@@ -152,17 +290,16 @@ class DeckController(LiveUpdatedController):
 
     @APIExport(runOnUIThread=True)
     def zero(self):
-        # TODO: zero z-axis when first position focal plane found.
-        _,_,self._widget.first_z_focus = self.positioner.get_position()
-        try:
-            self._commChannel.sigInitialFocalPlane.emit(self._widget.first_z_focus)
-            print(f"Updated initial focus {self._widget.first_z_focus}")
-        except Exception as e:
-            print(f"Zeroing failed {e}")
-        # self._commChannel.sigZeroZAxis.emit(self._widget.first_z_focus)
-
-        # self.setPositioner(position=0, axis="Z")
-        # self.positioner.zero()
+        if not len(self.scan_table):
+            self.relative_focal_plane = self.positioner.get_position()
+        else:
+            old_relative_focal_plane = self.scan_table[0].position_z
+            if old_relative_focal_plane != self.relative_focal_plane:
+                raise(f"Error: mismatch in relative focus position.")
+            _, _, self.relative_focal_plane = self.positioner.get_position()
+            for i_row, values in enumerate(self.scan_table):
+                self.scan_table[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
+        self.update_table_in_widget()
 
     @APIExport(runOnUIThread=True)
     def move(self, new_position):
@@ -170,7 +307,7 @@ class DeckController(LiveUpdatedController):
         speed = [self._widget.getSpeed(self.positioner_name, axis) for axis in self.positioner.axes]
         self.positioner.move(new_position, "XYZ", is_absolute=True, is_blocking=False, speed=speed)
         [self.updatePosition(axis) for axis in self.positioner.axes]
-        self.connect_add_current_position()
+        # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
 
     def setPos(self, axis, position):
         """ Moves the positioner to the specified position in the specified axis. """
@@ -181,7 +318,7 @@ class DeckController(LiveUpdatedController):
         self.positioner.move(self._widget.getAbsPosition(self.positioner_name, axis), axis=axis, is_absolute=True,
                              is_blocking=False)
         [self.updatePosition(axis) for axis in self.positioner.axes]
-        self.connect_add_current_position()
+        # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
 
     def stepUp(self, positionerName, axis):
         shift = self._widget.getStepSize(positionerName, axis)
@@ -189,7 +326,8 @@ class DeckController(LiveUpdatedController):
         try:
             self.positioner.move(shift, axis, is_blocking=False)
             [self.updatePosition(axis) for axis in self.positioner.axes]
-            self.connect_add_current_position()
+            # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
+
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
 
@@ -198,7 +336,8 @@ class DeckController(LiveUpdatedController):
         try:
             self.positioner.move(shift, axis, is_blocking=False)
             [self.updatePosition(axis) for axis in self.positioner.axes]
-            self.connect_add_current_position()
+            # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
+
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
 
@@ -249,7 +388,6 @@ class DeckController(LiveUpdatedController):
         self.selected_slot = slot
         self.selected_well = None
         self.connect_wells()
-        # self.connect_add_beacons()
 
     @APIExport(runOnUIThread=True)
     def select_well(self, well):
@@ -257,7 +395,6 @@ class DeckController(LiveUpdatedController):
         self.selected_well = well
         self._widget.select_well(well)
         self.connect_go_to()
-        self.connect_add_beacons()
 
     def retranslate_position(self, position: Point, flip_xy=False):
         if flip_xy:  # TODO: avoid this by using normal coordinate system
@@ -293,130 +430,13 @@ class DeckController(LiveUpdatedController):
         self.positioner.move(well_position[:2], "XY", is_absolute=True, is_blocking=False,
                              speed=speed[:2])
         [self.updatePosition(axis) for axis in self.positioner.axes]
-        self.connect_add_current_position()
-
-    def connect_line_edit(self):
-        # self._widget.pos_in_well_lined.textChanged.connect(self.connect_add_position)
-        self._widget.beacons_nx.textChanged.connect(self.connect_add_beacons)
-        self._widget.beacons_ny.textChanged.connect(self.connect_add_beacons)
-        self._widget.beacons_dx.textChanged.connect(self.connect_add_beacons)
-        self._widget.beacons_dy.textChanged.connect(self.connect_add_beacons)
+        # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
 
     def current_slot(self):
         return self.deck_definition.get_slot(self.positioner.get_position())
 
     def get_position_in_deck(self):
         return Point(*self.positioner.get_position()) + self.deck_definition.corner_offset
-
-    def update_values(self):
-        current_position = Point(*self.positioner.get_position())
-        try:
-            current_position_deck = self.retranslate_position(current_position)
-            current_slot = self.deck_definition.get_slot(current_position_deck)
-            current_well = self.deck_definition.get_closest_well(current_position_deck)
-            self._widget.current_slot = current_slot
-            self._widget.current_well = current_well
-            self._widget.current_absolute_position = current_position
-            self._widget.current_z_focus = current_position.z
-            well_position = self.deck_definition.get_well_position(current_slot, current_well)  # Deck measurement
-            well_position = self.translate_position(well_position)  # Posioner value
-            if self._widget.current_slot is not None and self._widget.current_well is not None:
-                # Offset gets defined positively: when shifting an offset it should be shift = offset - current_position
-                zero = self.translate_position(10e-4)  # Positioner value
-                offset = tuple([a - b if np.abs(a - b) > zero else 0.00 for (a, b) in
-                                zip(well_position,
-                                    current_position)][:2])
-                self._widget.current_offset = offset  # Positioner Values
-        except Exception as e:
-            self.__logger.debug(f"Error when updating values. {e}")
-
-    def connect_add_current_position(self):
-        if isinstance(self._widget.add_current_btn, guitools.BetterPushButton):
-            try:
-                self._widget.add_current_btn.disconnect()
-            except Exception:
-                pass
-            self._widget.add_current_btn.clicked.connect(self.update_values)
-            self._widget.add_current_btn.clicked.connect(self._widget.add_current_position_to_scan)
-        else:
-            slot, well, offset, z_focus, absolute_position = (0, "Z0", ("inf", "inf"), 0, ("inf", "inf", "inf"))
-            if isinstance(self._widget.add_current_btn, guitools.BetterPushButton):
-                try:
-                    self._widget.add_current_btn.disconnect()
-                except Exception:
-                    pass
-                self._widget.add_current_btn.clicked.connect(
-                    partial(self._widget.add_position_to_scan, slot, well, offset, z_focus, absolute_position))
-
-    def connect_add_beacons(self):
-        nx, ny = int(self._widget.beacons_nx.text()), int(self._widget.beacons_ny.text())
-        dx, dy = int(self._widget.beacons_dx.text()), int(self._widget.beacons_dy.text())
-        if isinstance(self._widget.beacons_add, guitools.BetterPushButton):
-            try:
-                self._widget.beacons_add.disconnect()
-            except Exception:
-                pass
-            x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
-            z = self._widget.current_z_focus or float(self.positioner.position["Z"])
-            self._widget.current_z_focus = z
-            x, y, _ = self.translate_position(Point(x, y, z))  # Positioner value
-
-            xx,yy = [dx*(i-(nx-1)/2) for i in range(nx)], [dy*(i-(ny-1)/2) for i in range(ny)]
-
-            for xi, yi in product(xx, yy):
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well, (xi, yi),
-                            self._widget.current_z_focus, (x+xi, y+yi, z)))
-
-    """
-    def connect_add_position_(self):
-        if isinstance(self._widget.beacons_add, guitools.BetterPushButton):
-            try:
-                self._widget.beacons_add.disconnect()
-            except Exception:
-                pass
-            x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
-            z = self._widget.current_z_focus or float(self.positioner.position["Z"])
-            x, y, _ = self.translate_position(Point(x, y, z))  # Positioner value
-            self._widget.current_z_focus = z
-            if self._widget.positions_in_well == 1:
-                offset = self.default_positions_in_well["center"]
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well, offset,
-                            self._widget.current_z_focus, (x, y, z)))
-            elif self._widget.positions_in_well == 2:
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
-            elif self._widget.positions_in_well == 3:
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["up"], self._widget.current_z_focus, (x, y, z)))
-            elif self._widget.positions_in_well == 4:
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["left"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["right"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["up"], self._widget.current_z_focus, (x, y, z)))
-                self._widget.beacons_add.clicked.connect(
-                    partial(self._widget.add_position_to_scan, self.selected_slot, self.selected_well,
-                            self.default_positions_in_well["down"], self._widget.current_z_focus, (x, y, z)))
-
-            # offset = well.geometry.position - self.positioner.get_position()
-    """
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
@@ -429,7 +449,7 @@ class DeckController(LiveUpdatedController):
             if isinstance(btn, guitools.BetterPushButton):
                 btn.clicked.connect(partial(self.select_labware, slot))
         # Select default slot
-        self.select_labware(list(self._widget._labware_dict.keys())[0]) # TODO: improve...
+        self.select_labware(list(self._widget._labware_dict.keys())[0])  # TODO: improve...
 
     def connect_go_to(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""
@@ -460,219 +480,3 @@ class DeckController(LiveUpdatedController):
             # )
             if isinstance(btn, guitools.BetterPushButton):
                 btn.clicked.connect(partial(self.select_well, well))
-
-#
-# class LabwareScanner():
-#     def __init__(self, positioner, deck, labwares, objective_radius):
-#         self.__logger = initLogger(self, instanceName="DeckSlotScanner")
-#
-#         self.positioner = positioner
-#         self.deck = deck
-#         self.slots_list = self.deck["locations"]["orderedSlots"]
-#         self.corner_offset = [abs(i) for i in self.deck["cornerOffsetFromOrigin"]]
-#         self.deck_definition.labwares = labwares
-#         self.objective_radius = objective_radius
-#         self.default_positions_in_well = {"center": (0, 0), "left": (-0.01, 0),
-#                                           "right": (0.01, 0), "up": (0, 0.01), "down": (0, -0.01)}
-#         self.is_moving = False
-#
-#     def get_closest_well(self, loc=None):
-#         """
-#         :param loc: Absolute position
-#         :return: Well
-#         """
-#         if loc is None:
-#             xo, yo, _ = self.positioner.get_position()
-#         elif isinstance(loc, Point):
-#             xo, yo, _ = loc
-#         else:
-#             raise TypeError
-#         slot = self.get_slot(loc=loc)
-#         if slot is None:
-#             return None
-#         dist_to_well = 10 ** 5
-#         closest_well = None
-#
-#         if slot not in self.deck_definition.labwares.keys():
-#             self.__logger.debug("No defined labware in current slot.")
-#             return None
-#         for well in self.deck_definition.labwares[slot].wells():
-#             radius = well.diameter / 2
-#             x1, y1, _ = well.geometry.position + Point(*self.corner_offset)
-#             dist = np.linalg.norm((xo - x1, yo - y1))
-#             if dist < dist_to_well:
-#                 dist_to_well = dist
-#                 closest_well = well
-#                 if x1 - radius < xo < x1 + radius and y1 - radius < yo < y1 + radius:
-#                     self.__logger.debug(f"Currently in well {well}.")
-#                     return well
-#         return closest_well
-#
-#     def get_slot(self, loc=None):
-#         """
-#         :param loc: Absolute position
-#         :return: Slot number
-#         """
-#         if loc is None:
-#             xo, yo, _ = self.positioner.get_position()
-#         elif isinstance(loc, Point):
-#             xo, yo, _ = loc
-#         else:
-#             raise TypeError
-#
-#         for slot in self.slots_list:
-#             slot_origin = [a + b for a, b in zip(slot["position"], self.corner_offset)]
-#             slot_size = [v for v in slot["boundingBox"].values()]
-#             x1, y1, _ = slot_origin
-#             x2, y2, _ = [a + b for a, b in zip(slot_origin, slot_size)]
-#             if x1 < xo < x2 and y1 < yo < y2:
-#                 # self.__logger.debug(f"Currently in slot {slot['id']}.")
-#                 return slot['id']
-#         return None
-#
-#     def move_to_well(self, well, slot):
-#         if not isinstance(well, Well):
-#             well = self.deck_definition.labwares[slot].wells_by_name()[well]
-#         x, y, _ = well.geometry.position
-#         x_offset, y_offset, _ = self.corner_offset
-#         new_pos = (x + abs(x_offset), y + abs(y_offset))
-#         if self.objective_collision_avoidance(axis="XY", new_pos=new_pos, slot=slot):
-#             self.__logger.debug(f"Moving to well: {well} in slot: {slot}. Abs. Pos.: {new_pos[0], new_pos[1]}")
-#             self.moveToXY(new_pos[0], new_pos[1])
-#         else:
-#             self.__logger.info(f"Avoiding objective collision.")
-#
-#     # def valid_position(self, axis, shift):
-#     #     if self.selected_slot is None:
-#     #         current_slot = self.get_slot()
-#     #         if current_slot is None:
-#     #             return False
-#     #         else:
-#     #             slot = self.slots_list[current_slot]
-#     #     else:
-#     #         slot = self.slots_list[self.selected_slot]
-#     #
-#     #     slot_origin = [a + b for a, b in zip(slot["position"], self.corner_offset)]
-#     #     slot_size = [v for v in slot["boundingBox"].values()]
-#     #
-#     #     x1, y1, _ = slot_origin
-#     #     x2, y2, _ = [a + b for a, b in zip(slot_origin, slot_size)]
-#     #
-#     #     xo, yo, _ = self.positioner.get_position()  # Avoided using positionerName
-#     #     if axis == "X":
-#     #         xo = xo + shift
-#     #     elif axis == "Y":
-#     #         yo = yo + shift
-#     #
-#     #     if not x1 + self.objective_radius < xo < x2 - self.objective_radius \
-#     #             or not y1 + self.objective_radius < yo < y2 - self.objective_radius:
-#     #         return False
-#     #     else:
-#     #         return True
-#
-#     def check_position_in_well(self, well, pos):
-#         if (abs(pos[0]) < well.diameter / 2) and (abs(pos[1]) < well.diameter / 2):
-#             return
-#         else:
-#             raise ValueError("Position outside well.")
-#
-#     def objective_collision_avoidance(self, axis, new_pos=None, slot=None, shift=None):
-#         xo, yo, z = self.positioner.get_position()
-#         if axis == "Z":
-#             if slot is not None:
-#                 if slot == self.get_slot():  # Moving objective within a slot
-#                     return True
-#                 else:  # Apply collision avoidance
-#                     return False
-#             else:
-#                 if self.get_slot() is not None:
-#                     return True
-#                 else:
-#                     return False
-#         else:
-#             # Define XY shift
-#             if axis == "X":
-#                 new_x = new_pos if shift is None else xo + shift
-#                 new_y = yo
-#             elif axis == "Y":
-#                 new_x = xo
-#                 new_y = new_pos if shift is None else yo + shift
-#             elif axis == "XY":
-#                 new_x = new_pos[0] if shift is None else xo + shift[0]
-#                 new_y = new_pos[1] if shift is None else yo + shift[1]
-#
-#             # Called with positioner arrows within one slot -> avoid collision and check borders
-#             if slot is None and self.get_slot() is not None:
-#                 slot_dict = self.slots_list[int(self.get_slot()) - 1]
-#
-#                 slot_origin = [a + b for a, b in zip(slot_dict["position"], self.corner_offset)]
-#                 slot_size = [v for v in slot_dict["boundingBox"].values()]
-#
-#                 x1, y1, _ = slot_origin
-#                 x2, y2, _ = [a + b for a, b in zip(slot_origin, slot_size)]
-#
-#                 if not x1 + self.objective_radius < new_x < x2 - self.objective_radius \
-#                         or not y1 + self.objective_radius < new_y < y2 - self.objective_radius:
-#                     return False
-#                 else:
-#                     return True
-#             # Called with move_to_well, knows slot -> keep z and check borders
-#             elif slot is not None and slot == self.get_slot():
-#                 slot_dict = self.slots_list[int(self.get_slot()) - 1]
-#
-#                 slot_origin = [a + b for a, b in zip(slot_dict["position"], self.corner_offset)]
-#                 slot_size = [v for v in slot_dict["boundingBox"].values()]
-#
-#                 x1, y1, _ = slot_origin
-#                 x2, y2, _ = [a + b for a, b in zip(slot_origin, slot_size)]
-#
-#                 if not x1 + self.objective_radius < new_x < x2 - self.objective_radius \
-#                         or not y1 + self.objective_radius < new_y < y2 - self.objective_radius:
-#                     return False
-#                 else:
-#                     return True
-#             # Called with move_to_well, knows slot -> avoid collision and check borders
-#             elif slot is not None and slot != self.get_slot():
-#                 slot_dict = self.slots_list[int(slot) - 1]
-#
-#                 slot_origin = [a + b for a, b in zip(slot_dict["position"], self.corner_offset)]
-#                 slot_size = [v for v in slot_dict["boundingBox"].values()]
-#
-#                 x1, y1, _ = slot_origin
-#                 x2, y2, _ = [a + b for a, b in zip(slot_origin, slot_size)]
-#
-#                 if not x1 + self.objective_radius < new_x < x2 - self.objective_radius \
-#                         or not y1 + self.objective_radius < new_y < y2 - self.objective_radius:
-#                     return False
-#                 else:
-#                     if z > 1:
-#                         self.__logger.debug("Avoiding objective collision.")
-#                         self.is_moving = True
-#                         self.positioner.move(axis="XYZ", dist=(0, 0, -z), is_blocking=True)
-#                         self.is_moving = False
-#                     return True
-#             else:
-#                 raise ValueError
-#
-#     def shiftXYoffset(self, xy_offset, x_offset=None, y_offset=None):
-#         if xy_offset is not None and x_offset is None and y_offset is None:
-#             x_offset = xy_offset[0]
-#             y_offset = xy_offset[1]
-#         else:
-#             raise ValueError
-#         x, y, z = self.positioner.get_position()
-#         self.positioner.move(axis="XY", dist=(x_offset + x, y_offset + y))
-#         # is_blocking=False)  # , speed=5, is_blocking=True, is_absolute=True)
-#         self.is_moving = False
-#
-#     def moveToXY(self, pos_X, pos_Y):
-#         x, y, z = self.positioner.get_position()
-#         self.positioner.move(axis="XY", dist=(pos_X - x, pos_Y - y))
-#         # is_blocking=False)  # , speed=5, is_blocking=True, is_absolute=True)
-#         self.is_moving = False
-#
-#     def setDirections(self, directions=(1, 1, 1)):
-#         if (0):
-#             self.positioner.set_direction(axis=1, sign=directions[0])
-#             self.positioner.set_direction(axis=2, sign=directions[1])
-#             self.positioner.set_direction(axis=3, sign=directions[2])
