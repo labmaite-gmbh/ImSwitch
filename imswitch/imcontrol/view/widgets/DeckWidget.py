@@ -39,45 +39,6 @@ class DeckWidget(Widget):
 
     # https://stackoverflow.com/questions/12608830/writing-a-qtablewidget-to-a-csv-or-xls
     # Extra blank row issue: https://stackoverflow.com/questions/3348460/csv-file-written-with-python-has-blank-lines-between-each-row
-    def handleSave_(self):
-        path = QtWidgets.QFileDialog.getSaveFileName(
-            self, 'Save File', '', 'CSV(*.csv)')
-        # if not path[0] != "":
-        with open(path[0], 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            for row in range(self.scan_list.rowCount()):
-                rowdata = []
-                for column in range(self.scan_list.columnCount()):
-                    item = self.scan_list.item(row, column)
-                    if item is not None:
-                        rowdata.append(
-                            item.text())
-                    else:
-                        rowdata.append('')
-                writer.writerow(rowdata)
-        # else:
-        #     self.__logger.debug("Empty path: handleSave")
-        self.open_in_scanner_window()
-
-    def handleSave(self):
-        path = QtWidgets.QFileDialog.getSaveFileName(
-            self, 'Save File', '', 'CSV(*.csv)')
-        # if not path[0] != "":
-        columns = range(self.scan_list.columnCount())
-        header = [self.scan_list.horizontalHeaderItem(column).text()
-                  for column in columns]
-        with open(path[0], 'w') as csvfile:
-            writer = csv.writer(
-                csvfile, dialect='excel', lineterminator='\n')
-            writer.writerow(header)
-            for row in range(self.scan_list.rowCount()):
-                writer.writerow(
-                    self.scan_list.item(row, column).text()
-                    for column in columns)
-        # else:
-        #     self.__logger.debug("Empty path: handleSave")
-        self.open_in_scanner_window()
-
     def open_in_scanner_window(self):
         choice = QtWidgets.QMessageBox.question(self, 'Next action',
                                                 "Do you want to load the current scan list in the Deck Scanner?",
@@ -90,45 +51,6 @@ class DeckWidget(Widget):
             print("Click DeckScanner")
         else:
             pass
-
-    def handleOpen_(self):
-        path = QtWidgets.QFileDialog.getOpenFileName(
-            self, 'Open File', '', 'CSV(*.csv)')
-        # if not path.isEmpty():
-        with open(path[0], 'r') as csvfile:
-            self.scan_list.clear()
-            self.scan_list.setHorizontalHeaderLabels(["Slot", "Well", "Offset", "Z_focus", "Absolute"])
-            self.scan_list.setRowCount(0)
-            self.scan_list_items = 0
-            for rowdata in csv.reader(csvfile):
-                self.scan_list.insertRow(self.scan_list_items)
-                for column, data in enumerate(rowdata):
-                    item = QtWidgets.QTableWidgetItem(data)
-                    self.scan_list.setItem(self.scan_list_items, column, item)
-                self.scan_list_items += 1
-
-    def handleOpen(self):
-        path = QtWidgets.QFileDialog.getOpenFileName(
-            self, 'Open File', '', 'CSV(*.csv)')
-        # if not path.isEmpty():
-        self.scan_list.clear()
-        self.scan_list.setRowCount(0)
-        self.scan_list_items = 0
-        with open(path[0], 'r') as csvfile:
-            reader = csv.reader(csvfile)
-            header = next(reader)
-            self.scan_list.setColumnCount(len(header))
-            self.scan_list.setHorizontalHeaderLabels(header)
-            for row, values in enumerate(reader):
-                self.scan_list.insertRow(row)
-                for column, value in enumerate(values):
-                    self.scan_list.setItem(
-                        row, column, QtWidgets.QTableWidgetItem(value))
-
-    def handleClear(self):
-        self.scan_list.clearContents()
-        self.scan_list.setRowCount(0)
-        self.scan_list_items = 0
 
     def display_open_file_window(self):
         path = QtWidgets.QFileDialog.getOpenFileName(

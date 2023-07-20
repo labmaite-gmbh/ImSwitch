@@ -5,7 +5,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from queue import Queue
-from typing import Optional, NamedTuple, Tuple
+from typing import Optional, NamedTuple, Tuple, List
 
 import numpy as np
 import pydantic
@@ -19,6 +19,7 @@ from locai.utils.utils import strfdelta
 from ..basecontrollers import LiveUpdatedController
 from ...model.SetupInfo import OpentronsDeckInfo
 from opentrons.types import Point
+from DeckController import ScanPoint
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -64,15 +65,15 @@ class DeckScanController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckScanController")
         self.objective_radius = _objectiveRadius
         ot_info: OpentronsDeckInfo = self._setupInfo.deck["OpentronsDeck"]
+        # Init desk and labware
         deck_layout = json.load(open(ot_info["deck_file"], "r"))
         self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
-        # Init desk and labware
+        self.scan_table: List[ScanPoint] = []
+        # Has control over positioners/detector/camera/LED
         self.initialize_positioners()
-        # Has control over detector/camera
         self.initialize_detectors()
-        # Has control over TLUP LED
         self.initialize_leds()
         # Current position to scan -> row from table
         self.current_scanning_row = (None, None, (None, None), None, (None, None, None))
@@ -86,22 +87,29 @@ class DeckScanController(LiveUpdatedController):
         self.zStackMax = 0
         self.zStackStep = 0
         self.pixelsize = (10, 1, 1)  # zxy
-        # Connect MCTWidget signals
+        # connect XY Stagescanning live update  https://github.com/napari/napari/issues/1110
+        # autofocus related
+        self.isAutofocusRunning = False
+
+        self.isScanrunning = False
+        self._widget.ScanShowLastButton.setEnabled(False)
+
+        self.connect_signals()
+        self.connect_widget_buttons()
+        self.ScanThread: Optional[threading.Thread] = None
+
+    def connect_widget_buttons(self):
         self._widget.ScanStartButton.clicked.connect(self.startScan)
         self._widget.ScanStopButton.clicked.connect(self.stopScan)
         self._widget.ScanShowLastButton.clicked.connect(self.showLast)
-        # connect XY Stagescanning live update  https://github.com/napari/napari/issues/1110
-        self.sigImageReceived.connect(self.displayImage)
-        # autofocus related
-        self.isAutofocusRunning = False
-        self._commChannel.sigAutoFocusRunning.connect(self.setAutoFocusIsRunning)
-        self.isScanrunning = False
-        self._widget.ScanShowLastButton.setEnabled(False)
+
+    def connect_signals(self):
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
         self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
         self._commChannel.sigInitialFocalPlane.connect(self.update_z_focus)
+        self._commChannel.sigAutoFocusRunning.connect(self.setAutoFocusIsRunning)
+        self.sigImageReceived.connect(self.displayImage)
 
-        self.ScanThread: Optional[threading.Thread] = None
 
     @APIExport(runOnUIThread=True)
     def go_to_position_in_table(self, absolute_position):

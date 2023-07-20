@@ -40,8 +40,6 @@ class ScanPoint:
     relative_focus_z: float
 
 
-# dict = dataclasses.asdict(ScanPoint)
-
 class DeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
@@ -54,33 +52,23 @@ class DeckController(LiveUpdatedController):
         self.objective_radius = _objectiveRadius
         ot_info: OpentronsDeckInfo = self._setupInfo.deck["OpentronsDeck"]
         deck_layout = json.load(open(ot_info["deck_file"], "r"))
-
         self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
-
+        self.initialize_widget(deck=self.deck_definition.deck, labware=self.deck_definition.labwares)
         # Has control over positioner
         self.initialize_positioners()
-        #
         self.selected_slot = None
         self.selected_well = None
         self.relative_focal_plane = None
-        # self.scanner = LabwareScanner(self.positioner, self.deck, self.labwares, _objectiveRadius)
-        self._widget.initialize_deck(self.deck_definition.deck, self.deck_definition.labwares)
+        self.scan_table: List[ScanPoint] = []
+
+    def initialize_widget(self, deck, labware):
+        self._widget.initialize_deck(deck, labware)
         self._widget.init_scan_list()
         self._widget.init_beacons()
-        self.scan_table: List[ScanPoint] = []
         # Connect widget´s buttons
-        self.connect_home()
-        self.connect_zero()
-        self.connect_deck_slots()
-        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
-        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_table)
-        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
-        self._widget.buttonOpen.clicked.connect(self.open_scan_table_from_file)
-        self._widget.buttonSave.clicked.connect(self.save_scan_table_to_file)
-        self._widget.buttonClear.clicked.connect(self.clear_scan_table)
-        self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
-        self._widget.beacons_add.clicked.connect(self.add_beacons)
+        self.connect_signals()
+        self.connect_widget_buttons()
 
     def add_beacons(self):
         try:
@@ -143,7 +131,7 @@ class DeckController(LiveUpdatedController):
         self._widget.set_table_item(row_id, 0, current_point.slot)
         self._widget.set_table_item(row_id, 1, current_point.well)
         self._widget.set_table_item(row_id, 2, (
-        round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
+            round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
         self._widget.set_table_item(row_id, 3, round(current_point.relative_focus_z))
         self._widget.set_table_item(row_id, 4,
                                     (round(current_point.position_x), round(current_point.position_y),
@@ -160,24 +148,24 @@ class DeckController(LiveUpdatedController):
         # if not path.isEmpty():
         self.scan_table = []
         # load table from path
-        with open(path[0], 'r') as csvfile:
-            scan_dict = pd.read_csv(csvfile, sep=",").to_dict()
-
-            for k, v in scan_dict.items():
-                ...
-
-            reader = csv.reader(csvfile)
-            header = next(reader)
-            for row, values in enumerate(reader):
-                self.scan_table.append(values)
-
-        self.update_table_in_widget()
+        try:
+            with open(path[0], 'r') as csvfile:
+                list_dict = pd.read_csv(csvfile, index_col=0).to_dict(orient="records")
+                [self.scan_table.append(ScanPoint(**i)) for i in list_dict]
+            self.update_table_in_widget()
+        except Exception as e:
+            self.__logger.debug(f"No file selected. {e}")
 
     def save_scan_table_to_file(self):
         path = self._widget.display_save_file_window()
-        [dataclasses.asdict(i) for i in self.scan_table]
-
-        self._widget.open_in_scanner_window()
+        df = pd.DataFrame()
+        for i in self.scan_table:
+            df = df.append(dataclasses.asdict(i), ignore_index=True)
+        try:
+            df.to_csv(path[0])
+            self._widget.open_in_scanner_window()
+        except Exception as e:
+            self.__logger.debug(f"No file selected. {e}")
 
     def go_to_position_in_table(self, row):
         abs_pos = self.scan_table[row].position_x, self.scan_table[row].position_y, self.scan_table[row].position_z
@@ -198,14 +186,14 @@ class DeckController(LiveUpdatedController):
             self.relative_focal_plane = z_new
             for i_row, values in enumerate(self.scan_table[1:]):
                 print(values)
-                self.scan_table[1:][i_row].relative_focus_z = (self.scan_table[1:][i_row].position_z - self.relative_focal_plane)
+                self.scan_table[1:][i_row].relative_focus_z = (
+                        self.scan_table[1:][i_row].position_z - self.relative_focal_plane)
             # print("Propagate values below...")
         else:
             z_old = self.scan_table[row].position_z
             self.scan_table[row].position_z = z_new
-            self.scan_table[row].relative_focus_z = (z_new-self.relative_focal_plane)
+            self.scan_table[row].relative_focus_z = (z_new - self.relative_focal_plane)
         self.update_table_in_widget()
-
 
     @property
     def selected_well(self):
@@ -222,11 +210,6 @@ class DeckController(LiveUpdatedController):
     @selected_slot.setter
     def selected_slot(self, slot):
         self._selected_slot = slot
-
-    def connect_all_buttons(self):
-        self.connect_home()
-        self.connect_zero()
-        self.connect_deck_slots()
 
     def initialize_positioners(self):
         # Has control over positioner
@@ -295,7 +278,7 @@ class DeckController(LiveUpdatedController):
         else:
             old_relative_focal_plane = self.scan_table[0].position_z
             if old_relative_focal_plane != self.relative_focal_plane:
-                raise(f"Error: mismatch in relative focus position.")
+                raise (f"Error: mismatch in relative focus position.")
             _, _, self.relative_focal_plane = self.positioner.get_position()
             for i_row, values in enumerate(self.scan_table):
                 self.scan_table[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
@@ -438,6 +421,23 @@ class DeckController(LiveUpdatedController):
     def get_position_in_deck(self):
         return Point(*self.positioner.get_position()) + self.deck_definition.corner_offset
 
+    def connect_signals(self):
+        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
+        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_table)
+        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
+
+    def connect_widget_buttons(self):
+        if isinstance(self._widget.home, guitools.BetterPushButton):
+            self._widget.home.clicked.connect(self.home)
+        if isinstance(self._widget.zero, guitools.BetterPushButton):
+            self._widget.zero.clicked.connect(self.zero)
+        self.connect_deck_slots()
+        self._widget.buttonOpen.clicked.connect(self.open_scan_table_from_file)
+        self._widget.buttonSave.clicked.connect(self.save_scan_table_to_file)
+        self._widget.buttonClear.clicked.connect(self.clear_scan_table)
+        self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
+        self._widget.beacons_add.clicked.connect(self.add_beacons)
+
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
         # Connect signals for all buttons
@@ -459,16 +459,6 @@ class DeckController(LiveUpdatedController):
             except Exception:
                 pass
             self._widget.goto_btn.clicked.connect(partial(self.move_to_well, self.selected_well, self.selected_slot))
-
-    def connect_home(self):
-        """Connect Wells (Buttons) to the Sample Pop-Up Method"""
-        if isinstance(self._widget.home, guitools.BetterPushButton):
-            self._widget.home.clicked.connect(self.home)
-
-    def connect_zero(self):
-        """Connect Wells (Buttons) to the Sample Pop-Up Method"""
-        if isinstance(self._widget.zero, guitools.BetterPushButton):
-            self._widget.zero.clicked.connect(self.zero)
 
     def connect_wells(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""

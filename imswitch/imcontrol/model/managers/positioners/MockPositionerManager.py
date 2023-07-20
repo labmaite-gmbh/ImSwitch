@@ -21,9 +21,15 @@ class MockPositionerManager(PositionerManager):
 
     def move(self, value, axis, is_blocking = False, is_absolute = False, speed = [10,10,10]):
         if isinstance(value, list) or isinstance(value, tuple):
-            [self.setPosition(self._position[a] + v, a) for a,v in zip(axis, value)]
+            if is_absolute:
+                [self.setPosition(v, a) for a,v in zip(axis, value)]
+            else:
+                [self.setPosition(self._position[a] + v, a) for a,v in zip(axis, value)]
         else:
-            self.setPosition(self._position[axis] + value, axis)
+            if is_absolute:
+                self.setPosition(value, axis)
+            else:
+                self.setPosition(self._position[axis] + value, axis)
 
     def setPosition(self, position, axis):
         if isinstance(position, list) or isinstance(position, tuple):
