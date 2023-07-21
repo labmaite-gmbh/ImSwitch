@@ -7,7 +7,7 @@ from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets
 
 from .basewidgets import Widget
-from ...controller.controllers.DeckController import ScanPoint
+from locai.utils.scan_list import ScanPoint
 
 
 class DeckWidget(Widget):
@@ -37,6 +37,13 @@ class DeckWidget(Widget):
 
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
+    def update_scan_list(self, scan_list):
+        self.scan_list.clear_scan_list()
+        self.scan_list.set_header()
+        for row_i, row_values in enumerate(scan_list):
+            self.scan_list.add_row_in_widget(row_i, row_values)
+            self.scan_list_items += 1
+
     # https://stackoverflow.com/questions/12608830/writing-a-qtablewidget-to-a-csv-or-xls
     # Extra blank row issue: https://stackoverflow.com/questions/3348460/csv-file-written-with-python-has-blank-lines-between-each-row
     def open_in_scanner_window(self):
@@ -44,23 +51,25 @@ class DeckWidget(Widget):
                                                 "Do you want to load the current scan list in the Deck Scanner?",
                                                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if choice == QtWidgets.QMessageBox.Yes:
-            print("Open table in DeckScanner")
+
+            print("Open list in DeckScanner")
             QtWidgets.QMessageBox.information(self, "Scan list loaded in DeckScanner.",
                                               'Scan list loaded. Open the DeckScanner.',
                                               QtWidgets.QMessageBox.Ok)
             print("Click DeckScanner")
+            return True
         else:
-            pass
+            return False
 
     def display_open_file_window(self):
         path = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Open File', '', 'CSV(*.csv)')
-        return path
+        return path[0]
 
     def display_save_file_window(self):
         path = QtWidgets.QFileDialog.getSaveFileName(
             self, 'Save File', '', 'CSV(*.csv)')
-        return path
+        return path[0]
 
     def select_well(self, well):
         for well_id, btn in self.wells.items():
@@ -191,7 +200,7 @@ class DeckWidget(Widget):
         self.main_grid_layout.addWidget(self._deck_group_box, 1, 5, 1, 9)
         self.setLayout(self.main_grid_layout)
 
-    def set_table_item(self, row, col, item):
+    def set_list_item(self, row, col, item):
         self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
 
     def init_beacons(self):
@@ -223,45 +232,48 @@ class DeckWidget(Widget):
     def init_scan_list(self):
         # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
         self.scan_list = TableWidgetDragRows()
-        self.scan_list.setColumnCount(5)
-        self.scan_list.setHorizontalHeaderLabels(self.scan_list.columns)
+        self.scan_list.set_header()
         self.scan_list_items = 0
-        self.scan_list.setColumnHidden(0, True)
-        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
-        self.scan_list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
         self._actions_widget = QtWidgets.QGroupBox("Actions")
         self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
 
         actions_layout = QtWidgets.QHBoxLayout()
-        scan_list_actions_layout = QtWidgets.QHBoxLayout()
+        scan_list_actions_layout = QtWidgets.QGridLayout()
 
         self.goto_btn = guitools.BetterPushButton('GO TO')
         self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
 
+        self.scan_list_actions_info = QtWidgets.QLabel("")
+        self.scan_list_actions_info.setFixedHeight(20)
+        self.scan_list_actions_info.setHidden(True)
 
         self.buttonOpen = guitools.BetterPushButton('Open')
         self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Expanding)
+        self.buttonOpen.setFixedHeight(25)
         self.buttonOpen.setStyleSheet("background-color : gray; color: black")
         self.buttonSave = guitools.BetterPushButton('Save')
         self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Expanding)
+        self.buttonSave.setFixedHeight(25)
         self.buttonSave.setStyleSheet("background-color : gray; color: black")
         self.buttonClear = guitools.BetterPushButton('Clear')
         self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                        QtWidgets.QSizePolicy.Expanding)
+        self.buttonClear.setFixedHeight(25)
         self.buttonClear.setStyleSheet("background-color : gray; color: black")
 
         actions_layout.addWidget(self.goto_btn)
         actions_layout.addWidget(self.add_current_btn)
-        scan_list_actions_layout.addWidget(self.buttonOpen)
-        scan_list_actions_layout.addWidget(self.buttonSave)
-        scan_list_actions_layout.addWidget(self.buttonClear)
+        scan_list_actions_layout.addWidget(self.buttonOpen, 0, 0, 1, 1)
+        scan_list_actions_layout.addWidget(self.buttonSave, 0, 1, 1, 1)
+        scan_list_actions_layout.addWidget(self.buttonClear, 0, 2, 1, 1)
+        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
 
         self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                                     QtWidgets.QSizePolicy.Expanding)
-        self.scan_list_actions_widget.setMaximumHeight(60)
+        self.scan_list_actions_widget.setMaximumHeight(120)
         self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Expanding)
         # self._actions_widget.setMaximumWidth(140)
@@ -291,35 +303,6 @@ class DeckWidget(Widget):
             rows.append(rowdata)
 
         return rows
-
-    def add_current_position_to_scan_(self):
-        self.__logger.debug(f"Adding current position: {self.current_slot}, {self.current_well}")
-        row_id = len(self._get_items())
-
-        self.scan_list.insertRow(row_id)
-        if row_id == 0:
-            self.first_z_focus = self.current_z_focus
-            self.set_table_item(row_id, 3, 0)
-        else:
-            relative_z_focus = self.current_absolute_position[2] - self.first_z_focus
-            self.set_table_item(row_id, 3, relative_z_focus)
-
-        self.set_table_item(row_id, 0, self.current_slot)
-        self.set_table_item(row_id, 1, self.current_well)
-        self.set_table_item(row_id, 2, self.current_offset)
-        self.set_table_item(row_id, 4, self.current_absolute_position)
-        self.scan_list_items = row_id
-
-        for row in range(self.scan_list.rowCount()):
-            rowdata = []
-            for column in range(self.scan_list.columnCount()):
-                item = self.scan_list.item(row, column)
-                if item is not None:
-                    rowdata.append(
-                        item.text())
-                else:
-                    rowdata.append('')
-            self.__logger.debug(rowdata)
 
     def getAbsPosition(self, positionerName, axis):
         """ Returns the absolute position of the  specified positioner axis in
@@ -493,17 +476,18 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigDeleteRowClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int) # list of selected rows, position to drag to.
 
+    from locai.utils.scan_list import ScanPoint
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.columns = ["Slot", "Well", "Offset", "Z_focus", "Absolute", "Pos_idx"]
-        self.columns_map_dict = {
-            "Slot": 0, "Well": 1, "Offset": 3, "Z_focus":4, "Absolute":5, "Pos_idx":2
-        }
-        self.setColumnCount(len(self.columns))
-        self.setHorizontalHeaderLabels(self.columns)
+        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute"]
+        self.set_header()
+
         self.scan_list_items = 0
+
         self.setColumnHidden(0, True)
+        self.setColumnHidden(1, True)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -515,42 +499,94 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
 
-        self.horizontalHeader().sectionClicked.connect(self.onHorizontalHeaderClicked)
+        # self.horizontalHeader().sectionClicked.connect(self.onHorizontalHeaderClicked)
 
         self.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
         self.horizontalHeader().customContextMenuRequested.connect(self.onHorizontalHeaderClicked)
 
-    def onHorizontalHeaderClicked(self, column_index):
-        if self.selectionModel().selection().indexes():
-            for i in self.selectionModel().selection().indexes():
-                column = i.column()
-            menu = QtWidgets.QMenu()
-            goto_action = menu.addAction("Go To")
-            delete_action = menu.addAction("Delete")
-            adjust_focus_action = menu.addAction("Adjust Focus")
+        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-            action = menu.exec_(column_index)
-            if action == goto_action:
-                self.go_to_action(row)
-                print(f"{row}, {column}")
-            elif action == delete_action:
-                self.deleteSelected(row)
-            elif action == adjust_focus_action:
-                self.adjust_focus_action(row)
+    def set_item(self, row, col, item):
+        self.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
+
+    def add_row_in_widget(self, row_id, current_point: ScanPoint):
+        # TODO: improve hardcoding columns
+        self.insertRow(row_id)
+        self.set_item(row_id, 0, current_point.slot)
+        self.set_item(row_id, 1, current_point.labware)
+        self.set_item(row_id, 2, current_point.well)
+        self.set_item(row_id, 3, current_point.position_in_well_index)
+        self.set_item(row_id, 4, (
+            round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
+        self.set_item(row_id, 5, round(current_point.relative_focus_z))
+        self.set_item(row_id, 6,
+                                    (round(current_point.position_x), round(current_point.position_y),
+                                     round(current_point.position_z)))
+
+    def onHorizontalHeaderClicked(self, event):
+        print(f"Selected horizontal header. Select action.")
+        columns_menu = QtWidgets.QMenu("Hide columns:", self)
+        self.columns_checkbox = QtWidgets.QActionGroup(columns_menu)
+        for col in self.columns:
+            action = QtWidgets.QAction(col)
+            action.setCheckable(True)
+            if col == "Labware" or "Slot":
+                action.setChecked(False)
+            else:
+                action.setChecked(True)
+            self.columns_checkbox.addAction(action)
+        self.columns_checkbox.triggered.connect(self.column_checked)
+        menu = QtWidgets.QMenu().addMenu(columns_menu)
+        action = columns_menu.exec_(self.mapToGlobal(event.pos()))
+
+        print("Menu opened")
 
 
+
+
+    def column_checked(self):
+        for n, col in enumerate(self.columns_checkbox):
+            if col.isChecked():
+                self.setColumnHidden(n, True)
+            else:
+                self.setColumnHidden(n, False)
+
+
+
+    def set_header(self):
+        self.setColumnCount(len(self.columns))
+        self.setHorizontalHeaderLabels(self.columns)
+
+    def clear_scan_list(self):
+        self.clear()
+        self.setHorizontalHeaderLabels(self.columns)
+        self.setRowCount(0)
+        self.scan_list_items = 0
 
     def get_first_z_focus(self):
         return float(self.item(0, 3).text())
+
+    def getSignal(self, oObject: QtCore.QObject, strSignalName: str):
+        oMetaObj = oObject.metaObject()
+        for i in range(oMetaObj.methodCount()):
+            oMetaMethod = oMetaObj.method(i)
+            if not oMetaMethod.isValid():
+                continue
+            if oMetaMethod.methodType() == QtCore.QMetaMethod.Signal and \
+                    oMetaMethod.name() == strSignalName:
+                return oMetaMethod
+
+        return None
 
     def contextMenuEvent(self, event):
         if self.selectionModel().selection().indexes():
             for i in self.selectionModel().selection().indexes():
                 row, column = i.row(), i.column()
             menu = QtWidgets.QMenu()
-            goto_action = menu.addAction("Go To")
-            delete_action = menu.addAction("Delete")
-            adjust_focus_action = menu.addAction("Adjust Focus")
+            goto_action = menu.addAction("Go To") if self.isSignalConnected(self.getSignal(self, "sigGoToTableClicked")) else None
+            delete_action = menu.addAction("Delete") if self.isSignalConnected(self.getSignal(self, "sigDeleteRowClicked")) else None
+            adjust_focus_action = menu.addAction("Adjust Focus") if self.isSignalConnected(self.getSignal(self, "sigAdjustFocusClicked")) else None
 
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:

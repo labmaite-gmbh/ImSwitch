@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from queue import Queue
 from typing import Optional, NamedTuple, Tuple, List
+from functools import partial
 
 import numpy as np
 import pydantic
@@ -19,7 +20,7 @@ from locai.utils.utils import strfdelta
 from ..basecontrollers import LiveUpdatedController
 from ...model.SetupInfo import OpentronsDeckInfo
 from opentrons.types import Point
-from DeckController import ScanPoint
+from locai.utils.scan_list import ScanPoint, open_scan_list, save_scan_list
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -70,12 +71,12 @@ class DeckScanController(LiveUpdatedController):
         self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
-        self.scan_table: List[ScanPoint] = []
+        self.scan_list: List[ScanPoint] = []
         # Has control over positioners/detector/camera/LED
         self.initialize_positioners()
         self.initialize_detectors()
         self.initialize_leds()
-        # Current position to scan -> row from table
+        # Current position to scan -> row from list
         self.current_scanning_row = (None, None, (None, None), None, (None, None, None))
         # Time to settle image (stage vibrations)
         self.tUnshake = 0.2
@@ -102,29 +103,40 @@ class DeckScanController(LiveUpdatedController):
         self._widget.ScanStartButton.clicked.connect(self.startScan)
         self._widget.ScanStopButton.clicked.connect(self.stopScan)
         self._widget.ScanShowLastButton.clicked.connect(self.showLast)
+        self._widget.buttonOpen.clicked.connect(partial(self.open_scan_list_from_file, False))
+        self._widget.buttonSave.clicked.connect(self.save_scan_list_to_file)
 
     def connect_signals(self):
-        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
-        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
+        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
         self._commChannel.sigInitialFocalPlane.connect(self.update_z_focus)
         self._commChannel.sigAutoFocusRunning.connect(self.setAutoFocusIsRunning)
+        self._commChannel.sigOpenInScannerClicked.connect(self.open_scan_list_from_file)
         self.sigImageReceived.connect(self.displayImage)
 
+    def update_list_in_widget(self):
+        self._widget.update_scan_list(self.scan_list)
+
+    def open_scan_list_from_file(self, path = False):
+        if path is False:
+            path = self._widget.display_open_file_window()
+        self.scan_list = []
+        try:
+            self.scan_list = open_scan_list(path)
+            self.update_list_in_widget()
+        except Exception as e:
+            self.__logger.debug(f"No file selected. {e}")
+
+    def save_scan_list_to_file(self):
+        path = self._widget.display_save_file_window()
+        try:
+            save_scan_list(self.scan_list, path)
+        except Exception as e:
+            self.__logger.debug(f"No file selected. {e}")
 
     @APIExport(runOnUIThread=True)
-    def go_to_position_in_table(self, absolute_position):
-        self.move(new_position=Point(*absolute_position))
-
-    def adjust_focus_in_table(self, row):
-        _, _, z_new = self.positioner.get_position()
-        if self._widget.scan_list.item(row, 4) is not None:
-            x_old, y_old, z_old = tuple(map(float, self._widget.scan_list.item(row, 4).text().strip('()').split(',')))
-            z_focus_old = float(self._widget.scan_list.item(row, 3).text())
-        else:
-            raise ValueError(f"Item in row {row} is of type None")
-        self.__logger.info(f"Changing focus at row {row}: {z_old} um -> {z_new}")
-        self._widget.set_table_item(row=row, col=3, item=z_focus_old + (z_new - z_old))
-        self._widget.set_table_item(row=row, col=4, item=(x_old, y_old, z_new))
+    def go_to_position_in_list(self, row):
+        abs_pos = self.scan_list[row].position_x, self.scan_list[row].position_y, self.scan_list[row].position_z
+        self.move(new_position=Point(*abs_pos))
 
     # Scan Logic
     def setAutoFocusIsRunning(self, isRunning):
@@ -257,7 +269,8 @@ class DeckScanController(LiveUpdatedController):
                 # TODO: include estimation of one run (Autofocus * Z-Stack * Positions * Speed)
                 # run an event
                 self.timeLast = time.time()  # makes sure that the period is measured from launch to launch
-                self._widget.update_widget_text(self._widget.ScanInfoStartTime, f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
+                self._widget.update_widget_text(self._widget.ScanInfoStartTime,
+                                                f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
                 # Get positions to observe:
@@ -279,7 +292,7 @@ class DeckScanController(LiveUpdatedController):
                         # timestamp_ = str(self.nRounds) + strfdelta(datetime.now() - self.timeStart,
                         #                                            "_d{days}h{hours}m{minutes}s{seconds}")
                         timestamp_ = strfdelta(datetime.now() - self.timeStart,
-                                                                   "_{days}dd{hours}hh{minutes}mm")
+                                               "_{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
                         illu_mode = "Brightfield"
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
@@ -304,7 +317,7 @@ class DeckScanController(LiveUpdatedController):
 
             else:
                 self.update_time_to_next_round(tperiod, True)
-            self.positioner.move(value=0, axis="Z", is_blocking=True) # TODO: needed?
+            self.positioner.move(value=0, axis="Z", is_blocking=True)  # TODO: needed?
             # pause to not overwhelm the CPU
         time.sleep(0.1)
         self.stopScan()
@@ -312,7 +325,7 @@ class DeckScanController(LiveUpdatedController):
     def display_current_well(self, well):
         self._widget.update_widget_text(self._widget.ScanInfoCurrentWell, f"Scanning well: {well}")
 
-    def update_time_to_next_round(self, tperiod, sleep = False):
+    def update_time_to_next_round(self, tperiod, sleep=False):
         delta = timedelta(seconds=tperiod) + datetime.fromtimestamp(self.timeLast) - datetime.now()
         time_to_next = strfdelta(delta, "{hours}:{minutes}:{seconds}")
         self.__logger.info(f"Time to next: {time_to_next}")
@@ -326,7 +339,6 @@ class DeckScanController(LiveUpdatedController):
                 time.sleep(300)
             else:
                 time.sleep(600)
-
 
     def switchOnIllumination(self, intensity):
         self.__logger.info(f"Turning on Leds: {intensity} A")
@@ -411,7 +423,7 @@ class DeckScanController(LiveUpdatedController):
 
     def take_z_stack_at_position(self, current_position: Point, intensity):
         self.positioner.move(value=current_position, axis="XYZ", is_absolute=True, is_blocking=True)
-        time.sleep(self.tUnshake*3)
+        time.sleep(self.tUnshake * 3)
         # for zn, iZ in enumerate(np.arange(self.zStackMin, self.zStackMax, self.zStackStep)):
         # Array of displacements from center point (z_focus) -/+ z_depth/2
         self.switchOnIllumination(
@@ -449,15 +461,15 @@ class DeckScanController(LiveUpdatedController):
         # TODO: include exit/stop logic inside this loop: if I want to stop after 1 well, it need to complete the whole run before deleting the thread.
         image_index = 0
         self._widget.gridLayer = None
-        # TODO: check that the first position is not the one on the table but in the PositionerManager
+        # TODO: check that the first position is not the one on the list but in the PositionerManager
         for pos_i, pos_row in enumerate(range(self._widget.scan_list.rowCount())):
             self.__logger.info(f"Total positions {self._widget.scan_list.rowCount()}. pos_i{pos_i} - pos_row{pos_row}")
             # Get position to scan
             # TODO: inform current status through front-end.
             slot, well, offset, z_focus, current_pos = self.get_current_scan_row()
             # TODO: avoid this:
-            current_pos = current_pos + Point(0, 0, self.z_focus + z_focus - current_pos.z) # Z-position calculated with z_focus column and self.z_focus
-
+            current_pos = current_pos + Point(0, 0,
+                                              self.z_focus + z_focus - current_pos.z)  # Z-position calculated with z_focus column and self.z_focus
 
             img_info = ImageInfo(slot, well, offset, z_focus, current_pos, illu_mode=illuMode,
                                  position_idx=image_index, timestamp=timestamp)  # TODO: avoid hardcoded position_idx
@@ -466,9 +478,10 @@ class DeckScanController(LiveUpdatedController):
             self.display_current_well(well)
 
             if self.zStackEnabled:
-                for z_index, (z_pos, frame) in enumerate(self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
+                for z_index, (z_pos, frame) in enumerate(
+                        self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
                     # img_info.z_focus = z_pos
-                    img_info.z_focus = z_index # TODO: preferred by Biology -> slice number, not absolute position
+                    img_info.z_focus = z_index  # TODO: preferred by Biology -> slice number, not absolute position
                     self.save_image(frame, img_info)
                     if img_info.illu_mode == "Brightfield":  # store frames for displaying
                         self.LastStackLED.append(frame.copy())

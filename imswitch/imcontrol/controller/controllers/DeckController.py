@@ -1,11 +1,13 @@
 import dataclasses
 import json
+import os
 import time
 from functools import partial
 from typing import Optional
 from itertools import product
 import csv
 from typing import Union, Dict, Tuple, List, Optional
+import re
 
 import pandas as pd
 import numpy as np
@@ -17,6 +19,7 @@ from opentrons.types import Point
 from locai.deck.deck_config import DeckConfig
 from ..basecontrollers import LiveUpdatedController
 from ...model.SetupInfo import OpentronsDeckInfo
+from locai.utils.scan_list import ScanPoint, open_scan_list, save_scan_list
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -25,19 +28,6 @@ _homeAttr = "Home"
 _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
-
-
-@dataclasses.dataclass
-class ScanPoint:
-    labware: str
-    slot: int
-    well: str
-    position_x: float
-    position_y: float
-    position_z: float
-    offset_from_center_x: float
-    offset_from_center_y: float
-    relative_focus_z: float
 
 
 class DeckController(LiveUpdatedController):
@@ -57,10 +47,10 @@ class DeckController(LiveUpdatedController):
         self.initialize_widget(deck=self.deck_definition.deck, labware=self.deck_definition.labwares)
         # Has control over positioner
         self.initialize_positioners()
-        self.selected_slot = None
+        # self.selected_slot = self.deck_definition.slots_list[0] # Choose first one by default
         self.selected_well = None
         self.relative_focal_plane = None
-        self.scan_table: List[ScanPoint] = []
+        self.scan_list: List[ScanPoint] = []
 
     def initialize_widget(self, deck, labware):
         self._widget.initialize_deck(deck, labware)
@@ -80,8 +70,12 @@ class DeckController(LiveUpdatedController):
             xx, yy = [dx * (i - (nx - 1) / 2) for i in range(nx)], [dy * (i - (ny - 1) / 2) for i in range(ny)]
             for xi, yi in product(xx, yy):
                 point_to_scan = self.parse_position(Point(x=xi + x, y=yi + y, z=z))
-                self.scan_table.append(point_to_scan)
-            self.update_table_in_widget()
+                self.scan_list.append(point_to_scan)
+            self.update_beacons_index()
+            self.update_list_in_widget()
+            self._widget.scan_list_actions_info.setText("Unsaved changes.")
+            self._widget.scan_list_actions_info.setHidden(False)
+
         except Exception as e:
             self.__logger.debug(f"No well selected: Please, select a well before adding beacons. {e}")
 
@@ -97,12 +91,12 @@ class DeckController(LiveUpdatedController):
                         zip(well_position,
                             current_position)][:2])
         labware = self.deck_definition.labwares[current_slot].load_name
-        if not self.scan_table:  # First positions holds relative zero
+        if not self.scan_list:  # First positions holds relative zero
             self.relative_focal_plane = current_position[2]
         z_focus = current_position[2] - self.relative_focal_plane
         return ScanPoint(labware=labware, slot=int(current_slot), well=current_well,
                          position_x=current_position[0], position_y=current_position[1],
-                         position_z=current_position[2],
+                         position_z=current_position[2], position_in_well_index= 1,
                          offset_from_center_x=offset[0], offset_from_center_y=offset[1],
                          relative_focus_z=z_focus)
 
@@ -111,89 +105,95 @@ class DeckController(LiveUpdatedController):
         current_position = Point(*self.positioner.get_position())
         try:
             current_point = self.parse_position(current_position)
-            self.scan_table.append(current_point)
-            self.update_table_in_widget()
+            self.scan_list.append(current_point)
+            self.update_beacons_index()
+            self.update_list_in_widget()
+            self._widget.scan_list_actions_info.setText("Unsaved changes.")
+            self._widget.scan_list_actions_info.setHidden(False)
 
         except Exception as e:
             self.__logger.debug(f"Error when updating values. {e}")
 
-    def update_table_in_widget(self):
-        self._widget.scan_list.clear()
-        self._widget.scan_list.setRowCount(0)
-        self._widget.scan_list_items = 0
-        self._widget.scan_list.setColumnCount(len(self._widget.scan_list.columns))
-        self._widget.scan_list.setHorizontalHeaderLabels(self._widget.scan_list.columns)
-        for row_i, row_values in enumerate(self.scan_table):
-            self.add_row_in_widget(row_i, row_values)
+    def update_beacons_index(self):
+        count_dict = {}
+        for row in self.scan_list:
+            slot = row.slot
+            well = row.well
+            unique_id = row.position_x, row.position_y, row.position_z
+            key = (slot, well)
+            if key not in count_dict:
+                count_dict[key] = set()
+            count_dict[key].add(unique_id)
+            row.position_in_well_index = len(count_dict[key])
 
-    def add_row_in_widget(self, row_id, current_point):
-        self._widget.scan_list.insertRow(row_id)
-        self._widget.set_table_item(row_id, 0, current_point.slot)
-        self._widget.set_table_item(row_id, 1, current_point.well)
-        self._widget.set_table_item(row_id, 2, (
-            round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
-        self._widget.set_table_item(row_id, 3, round(current_point.relative_focus_z))
-        self._widget.set_table_item(row_id, 4,
-                                    (round(current_point.position_x), round(current_point.position_y),
-                                     round(current_point.position_z)))
-        self._widget.scan_list_items += 1
+    def update_list_in_widget(self):
+        self._widget.update_scan_list(self.scan_list)
 
-    def clear_scan_table(self):
-        self.scan_table = []
-        self._widget.scan_list.clear()
-        self._widget.scan_list.setHorizontalHeaderLabels(self._widget.scan_list.columns)
+    def clear_scan_list(self):
+        self.scan_list = []
+        self._widget.clear_scan_list()
 
-    def open_scan_table_from_file(self):
-        path = self._widget.display_open_file_window()
-        # if not path.isEmpty():
-        self.scan_table = []
-        # load table from path
+    def open_scan_list_from_file(self, path = False):
+        if path is False:
+            path = self._widget.display_open_file_window()
+        self.scan_list = []
         try:
-            with open(path[0], 'r') as csvfile:
-                list_dict = pd.read_csv(csvfile, index_col=0).to_dict(orient="records")
-                [self.scan_table.append(ScanPoint(**i)) for i in list_dict]
-            self.update_table_in_widget()
+            self.scan_list = open_scan_list(path)
+            self.update_list_in_widget()
+            self._widget.scan_list_actions_info.setText(f"Opened file: {os.path.split(path)[1]}")
+            self._widget.scan_list_actions_info.setHidden(False)
+
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
-    def save_scan_table_to_file(self):
+
+    def save_scan_list_to_file(self):
         path = self._widget.display_save_file_window()
-        df = pd.DataFrame()
-        for i in self.scan_table:
-            df = df.append(dataclasses.asdict(i), ignore_index=True)
         try:
-            df.to_csv(path[0])
-            self._widget.open_in_scanner_window()
+            save_scan_list(self.scan_list, path)
+        # df = pd.DataFrame()
+        # for i in self.scan_list:
+        #     df = df.append(dataclasses.asdict(i), ignore_index=True)
+        # try:
+        #     df.to_csv(path[0])
+            if self._widget.open_in_scanner_window():
+                self._commChannel.sigOpenInScannerClicked.emit(path)
+            self._widget.scan_list_actions_info.setText(f"Saved changes to {os.path.split(path)[1]}")
+            self._widget.scan_list_actions_info.setHidden(False)
+
+
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
-    def go_to_position_in_table(self, row):
-        abs_pos = self.scan_table[row].position_x, self.scan_table[row].position_y, self.scan_table[row].position_z
+    def go_to_position_in_list(self, row):
+        abs_pos = self.scan_list[row].position_x, self.scan_list[row].position_y, self.scan_list[row].position_z
         self.move(new_position=Point(*abs_pos))
 
-    def delete_position_in_table(self, row):
-        deleted_point = self.scan_table.pop(row)
+    def delete_position_in_list(self, row):
+        deleted_point = self.scan_list.pop(row)
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
-        self.update_table_in_widget()
+        self.update_list_in_widget()
+        self._widget.scan_list_actions_info.setText("Unsaved changes.")
+        self._widget.scan_list_actions_info.setHidden(False)
 
-    def adjust_focus_in_table(self, row):
+    def adjust_focus_in_list(self, row):
         _, _, z_new = self.positioner.get_position()
-        z_old = self.scan_table[row].position_z
+        z_old = self.scan_list[row].position_z
         if z_old == z_new:
             return
         if row == 0:
-            self.scan_table[row].position_z = z_new
+            self.scan_list[row].position_z = z_new
             self.relative_focal_plane = z_new
-            for i_row, values in enumerate(self.scan_table[1:]):
-                print(values)
-                self.scan_table[1:][i_row].relative_focus_z = (
-                        self.scan_table[1:][i_row].position_z - self.relative_focal_plane)
-            # print("Propagate values below...")
+            for i_row, values in enumerate(self.scan_list[1:]):
+                self.scan_list[1:][i_row].relative_focus_z = (
+                        self.scan_list[1:][i_row].position_z - self.relative_focal_plane)
         else:
-            z_old = self.scan_table[row].position_z
-            self.scan_table[row].position_z = z_new
-            self.scan_table[row].relative_focus_z = (z_new - self.relative_focal_plane)
-        self.update_table_in_widget()
+            z_old = self.scan_list[row].position_z
+            self.scan_list[row].position_z = z_new
+            self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
+        self.update_list_in_widget()
+        self._widget.scan_list_actions_info.setText("Unsaved changes.")
+        self._widget.scan_list_actions_info.setHidden(False)
 
     @property
     def selected_well(self):
@@ -273,16 +273,18 @@ class DeckController(LiveUpdatedController):
 
     @APIExport(runOnUIThread=True)
     def zero(self):
-        if not len(self.scan_table):
+        if not len(self.scan_list):
             self.relative_focal_plane = self.positioner.get_position()
         else:
-            old_relative_focal_plane = self.scan_table[0].position_z
+            old_relative_focal_plane = self.scan_list[0].position_z
             if old_relative_focal_plane != self.relative_focal_plane:
                 raise (f"Error: mismatch in relative focus position.")
             _, _, self.relative_focal_plane = self.positioner.get_position()
-            for i_row, values in enumerate(self.scan_table):
-                self.scan_table[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
-        self.update_table_in_widget()
+            for i_row, values in enumerate(self.scan_list):
+                self.scan_list[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
+        self.update_list_in_widget()
+        self._widget.scan_list_actions_info.setText("Unsaved changes.")
+        self._widget.scan_list_actions_info.setHidden(False)
 
     @APIExport(runOnUIThread=True)
     def move(self, new_position):
@@ -374,7 +376,7 @@ class DeckController(LiveUpdatedController):
 
     @APIExport(runOnUIThread=True)
     def select_well(self, well):
-        self.__logger.debug(f"Well {well}")
+        self.__logger.debug(f"Well {well} in slot {self.selected_slot}")
         self.selected_well = well
         self._widget.select_well(well)
         self.connect_go_to()
@@ -404,7 +406,7 @@ class DeckController(LiveUpdatedController):
             raise NotImplementedError(f"Not recognized units.")
 
     @APIExport(runOnUIThread=True)
-    def move_to_well(self, well: str, slot: Optional[str] = None):
+    def move_to_well(self, well: str, slot: str):
         """ Moves positioner to center of selecterd well keeping the current Z-axis position. """
         self.__logger.debug(f"Move to {well} ({slot})")
         speed = [self._widget.getSpeed(self.positioner_name, axis) for axis in self.positioner.axes]
@@ -422,9 +424,9 @@ class DeckController(LiveUpdatedController):
         return Point(*self.positioner.get_position()) + self.deck_definition.corner_offset
 
     def connect_signals(self):
-        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_table)
-        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_table)
-        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_table)
+        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
+        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_list)
+        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_list)
 
     def connect_widget_buttons(self):
         if isinstance(self._widget.home, guitools.BetterPushButton):
@@ -432,9 +434,9 @@ class DeckController(LiveUpdatedController):
         if isinstance(self._widget.zero, guitools.BetterPushButton):
             self._widget.zero.clicked.connect(self.zero)
         self.connect_deck_slots()
-        self._widget.buttonOpen.clicked.connect(self.open_scan_table_from_file)
-        self._widget.buttonSave.clicked.connect(self.save_scan_table_to_file)
-        self._widget.buttonClear.clicked.connect(self.clear_scan_table)
+        self._widget.buttonOpen.clicked.connect(partial(self.open_scan_list_from_file, False))
+        self._widget.buttonSave.clicked.connect(self.save_scan_list_to_file)
+        self._widget.buttonClear.clicked.connect(self.clear_scan_list)
         self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
         self._widget.beacons_add.clicked.connect(self.add_beacons)
 

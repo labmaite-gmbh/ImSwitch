@@ -97,6 +97,8 @@ class CommunicationChannel(SignalInterface):
 
     sigInitialFocalPlane = Signal(float) # initial focal plane for DeckScanController
 
+    sigOpenInScannerClicked = Signal(str) # Send path from DeckTool to DeckScanner to open the scan list
+
     sigBroadcast = Signal(str, str, object)
 
     sigSaveFocus = Signal()

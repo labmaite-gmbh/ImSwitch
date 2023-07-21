@@ -14,9 +14,6 @@ class DeckScanWidget(NapariHybridWidget):
     sigStepDownClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigsetSpeedClicked = QtCore.Signal(str, str)  # (positionerName, axis)
 
-    sigHomeClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-    sigZeroClicked = QtCore.Signal(str, str)  # (positionerName, axis)
-
     sigGoToClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigAddCurrentClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigAdjustFocusClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -47,10 +44,12 @@ class DeckScanWidget(NapariHybridWidget):
         self.autofocusInitial.insert(str(value))
         # TODO: could update the whole table: z_focus and absolute_values
 
-
-    def set_table_item(self, row, col, item):
-        self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
-
+    def update_scan_list(self, scan_list):
+        self.scan_list.clear_scan_list()
+        self.scan_list.set_header()
+        for row_i, row_values in enumerate(scan_list):
+            self.scan_list.add_row_in_widget(row_i, row_values)
+            self.scan_list_items += 1
 
     def get_all_positions(self):
         # TODO: implement. Return amount of positions for now.
@@ -67,67 +66,23 @@ class DeckScanWidget(NapariHybridWidget):
         self.buttonOpen.setStyleSheet("background-color : gray; color: black")
         self.buttonSave.setStyleSheet("background-color : gray; color: black")
 
-        self.buttonOpen.clicked.connect(self.handleOpen)
-        self.buttonSave.clicked.connect(self.handleSave)
-
         self.grid.addWidget(self.scan_list,12, 0, 1, 8)
         self.grid.addWidget(self.buttonOpen,11, 0, 1, 1)
         self.grid.addWidget(self.buttonSave,11, 1, 1, 1) # DO not display save here
 
-
-    # https://stackoverflow.com/questions/12608835/writing-a-qtablewidget-to-a-csv-or-xls
-    # Extra blank row issue: https://stackoverflow.com/questions/3348460/csv-file-written-with-python-has-blank-lines-between-each-row
-    def handleSave(self):
-        path = QtWidgets.QFileDialog.getSaveFileName(
-            self, 'Save File', '', 'CSV(*.csv)')
-        # if not path[0] != "":
-        try:
-            with open(path[0], 'w', newline='') as stream:
-                writer = csv.writer(stream)
-                for row in range(self.scan_list.rowCount()):
-                    rowdata = []
-                    for column in range(self.scan_list.columnCount()):
-                        item = self.scan_list.item(row, column)
-                        if item is not None:
-                            rowdata.append(
-                                item.text())
-                        else:
-                            rowdata.append('')
-                    writer.writerow(rowdata)
-        except:
-            print("Action Save cancelled.")
-
-        # else:
-        #     self.__logger.debug("Empty path: handleSave")
-
-    def handleOpen(self):
+    def display_open_file_window(self):
         path = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Open File', '', 'CSV(*.csv)')
-        # if not path.isEmpty():
-        try:
-            with open(path[0], 'r') as stream:
-                self.scan_list.setHorizontalHeaderLabels(["Slot", "Well","Offset", "Z_focus","Absolute"])
-                self.scan_list.setRowCount(0)
-                self.scan_list_items = 0
-                for rowdata in csv.reader(stream):
-                    if len(rowdata)>0:
-                        self.scan_list.insertRow(self.scan_list_items)
-                        for column, data in enumerate(rowdata):
-                            item = QtWidgets.QTableWidgetItem(data)
-                            if column == 4:
-                                # TODO: update absolute values with initial_z_focus
-                                pass
-                            self.scan_list.setItem(self.scan_list_items, column, item)
-                        self.scan_list_items += 1
-        except:
-            print("Action Open cancelled.")
+        return path[0]
+
+    def display_save_file_window(self):
+        path = QtWidgets.QFileDialog.getSaveFileName(
+            self, 'Save File', '', 'CSV(*.csv)')
+        return path[0]
 
     def __post_init__(self):
-
         # super().__init__(*args, **kwargs)
-
         self.ScanFrame = pg.GraphicsLayoutWidget()
-
         # initialize all GUI elements
         # period
         self.ScanLabelTimePeriod = QtWidgets.QLabel('Period T:') # TODO: change for a h:m:s Widget
