@@ -40,11 +40,12 @@ class ImageI(pydantic.BaseModel):
 @dataclasses.dataclass
 class ImageInfo:
     slot: Optional[str]
+    labware: Optional[str]
     well: str
+    position_in_well_index: int
     offset: Tuple[float, float]
     z_focus: float
     pos_abs: Point
-    position_idx: int  # TODO: depends on the amount of positions per well
     illu_mode: str
     timestamp: str
 
@@ -52,9 +53,9 @@ class ImageInfo:
         # TODO: fix hardcode in self.position_idx
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         if self.slot is None:
-            return f"{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
+            return f"{self.well}_{self.position_in_well_index}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
         else:
-            return f"{self.slot}_{self.well}_{self.position_idx}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
+            return f"{self.slot}_{self.well}_{self.position_in_well_index}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
 
 
 class DeckScanController(LiveUpdatedController):
@@ -123,6 +124,8 @@ class DeckScanController(LiveUpdatedController):
         try:
             self.scan_list = open_scan_list(path)
             self.update_list_in_widget()
+            self._widget.scan_list_actions_info.setText(f"Opened file: {os.path.split(path)[1]}")
+            self._widget.scan_list_actions_info.setHidden(False)
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
@@ -130,12 +133,21 @@ class DeckScanController(LiveUpdatedController):
         path = self._widget.display_save_file_window()
         try:
             save_scan_list(self.scan_list, path)
+            self._widget.scan_list_actions_info.setText(f"Saved changes to {os.path.split(path)[1]}")
+            self._widget.scan_list_actions_info.setHidden(False)
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
+    def delete_position_in_list(self, row):
+        deleted_point = self.scan_list.pop(row)
+        self.__logger.debug(f"Deleting row {row}: {deleted_point}")
+        self.update_list_in_widget()
+        self._widget.scan_list_actions_info.setText("Unsaved changes.")
+        self._widget.scan_list_actions_info.setHidden(False)
+
     @APIExport(runOnUIThread=True)
     def go_to_position_in_list(self, row):
-        abs_pos = self.scan_list[row].position_x, self.scan_list[row].position_y, self.scan_list[row].position_z
+        abs_pos = self.scan_list[row].get_absolute_position()
         self.move(new_position=Point(*abs_pos))
 
     # Scan Logic

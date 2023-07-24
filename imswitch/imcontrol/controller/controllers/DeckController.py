@@ -55,6 +55,8 @@ class DeckController(LiveUpdatedController):
     def initialize_widget(self, deck, labware):
         self._widget.initialize_deck(deck, labware)
         self._widget.init_scan_list()
+        self._widget.init_actions()
+        self._widget.init_scan_list_actions()
         self._widget.init_beacons()
         # Connect widget´s buttons
         self.connect_signals()
@@ -132,6 +134,9 @@ class DeckController(LiveUpdatedController):
     def clear_scan_list(self):
         self.scan_list = []
         self._widget.clear_scan_list()
+        self._widget.scan_list_actions_info.setText(f"Cleared scan list.")
+        self._widget.scan_list_actions_info.setHidden(False)
+        self.__logger.debug(f"Scan list cleared")
 
     def open_scan_list_from_file(self, path = False):
         if path is False:
@@ -142,32 +147,26 @@ class DeckController(LiveUpdatedController):
             self.update_list_in_widget()
             self._widget.scan_list_actions_info.setText(f"Opened file: {os.path.split(path)[1]}")
             self._widget.scan_list_actions_info.setHidden(False)
-
+            self.__logger.debug(f"Opened file: {path}")
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
-
 
     def save_scan_list_to_file(self):
         path = self._widget.display_save_file_window()
         try:
             save_scan_list(self.scan_list, path)
-        # df = pd.DataFrame()
-        # for i in self.scan_list:
-        #     df = df.append(dataclasses.asdict(i), ignore_index=True)
-        # try:
-        #     df.to_csv(path[0])
             if self._widget.open_in_scanner_window():
                 self._commChannel.sigOpenInScannerClicked.emit(path)
             self._widget.scan_list_actions_info.setText(f"Saved changes to {os.path.split(path)[1]}")
             self._widget.scan_list_actions_info.setHidden(False)
-
-
+            self.__logger.debug(f"Saved file to {path}")
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
     def go_to_position_in_list(self, row):
-        abs_pos = self.scan_list[row].position_x, self.scan_list[row].position_y, self.scan_list[row].position_z
+        abs_pos = self.scan_list[row].get_absolute_position()
         self.move(new_position=Point(*abs_pos))
+        self.__logger.debug(f"Moved to position in row {row}: {abs_pos}")
 
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
@@ -180,6 +179,7 @@ class DeckController(LiveUpdatedController):
         _, _, z_new = self.positioner.get_position()
         z_old = self.scan_list[row].position_z
         if z_old == z_new:
+            self.__logger.debug(f"Adjusting focus: same focus selected.")
             return
         if row == 0:
             self.scan_list[row].position_z = z_new
@@ -187,10 +187,12 @@ class DeckController(LiveUpdatedController):
             for i_row, values in enumerate(self.scan_list[1:]):
                 self.scan_list[1:][i_row].relative_focus_z = (
                         self.scan_list[1:][i_row].position_z - self.relative_focal_plane)
+            self.__logger.debug(f"Adjusting focus: changing relative focal plane. {z_old} um->{z_new} um")
         else:
             z_old = self.scan_list[row].position_z
             self.scan_list[row].position_z = z_new
             self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
+            self.__logger.debug(f"Adjusting focus: Row {row} - {z_old} um->{z_new} um")
         self.update_list_in_widget()
         self._widget.scan_list_actions_info.setText("Unsaved changes.")
         self._widget.scan_list_actions_info.setHidden(False)
@@ -231,11 +233,9 @@ class DeckController(LiveUpdatedController):
                     self.setSharedAttr(axis, _homeAttr, pManager.home[axis])
                 if hasStop:
                     self.setSharedAttr(axis, _stopAttr, pManager.stop[axis])
-
         # Connect CommunicationChannel signals
         self._commChannel.sharedAttrs.sigAttributeSet.connect(self.attrChanged)
         self._commChannel.sigSetSpeed.connect(lambda speed: self.setSpeedGUI(speed))
-
         # Connect PositionerWidget signals
         self._widget.sigStepUpClicked.connect(self.stepUp)
         self._widget.sigStepDownClicked.connect(self.stepDown)

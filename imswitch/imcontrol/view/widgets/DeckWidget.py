@@ -5,9 +5,9 @@ from PyQt5.QtCore import Qt
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets
+from functools import partial
 
 from .basewidgets import Widget
-from locai.utils.scan_list import ScanPoint
 
 
 class DeckWidget(Widget):
@@ -228,22 +228,9 @@ class DeckWidget(Widget):
         self.beacons_widget.setLayout(beacons_layout)
         self.main_grid_layout.addWidget(self.beacons_widget, 1, 0, 3, 5)
 
-
-    def init_scan_list(self):
-        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
-        self.scan_list = TableWidgetDragRows()
-        self.scan_list.set_header()
-        self.scan_list_items = 0
-
-        self._actions_widget = QtWidgets.QGroupBox("Actions")
-        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
-
-        actions_layout = QtWidgets.QHBoxLayout()
+    def init_scan_list_actions(self):
         scan_list_actions_layout = QtWidgets.QGridLayout()
-
-        self.goto_btn = guitools.BetterPushButton('GO TO')
-        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
-
+        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
         self.scan_list_actions_info = QtWidgets.QLabel("")
         self.scan_list_actions_info.setFixedHeight(20)
         self.scan_list_actions_info.setHidden(True)
@@ -264,31 +251,40 @@ class DeckWidget(Widget):
         self.buttonClear.setFixedHeight(25)
         self.buttonClear.setStyleSheet("background-color : gray; color: black")
 
-        actions_layout.addWidget(self.goto_btn)
-        actions_layout.addWidget(self.add_current_btn)
+        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
         scan_list_actions_layout.addWidget(self.buttonOpen, 0, 0, 1, 1)
         scan_list_actions_layout.addWidget(self.buttonSave, 0, 1, 1, 1)
         scan_list_actions_layout.addWidget(self.buttonClear, 0, 2, 1, 1)
-        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
-
         self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                                     QtWidgets.QSizePolicy.Expanding)
         self.scan_list_actions_widget.setMaximumHeight(120)
+        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
+        self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 5)
+
+    def init_actions(self):
+        self._actions_widget = QtWidgets.QGroupBox("Actions")
+        actions_layout = QtWidgets.QHBoxLayout()
+        self.goto_btn = guitools.BetterPushButton('GO TO')
+        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
+        actions_layout.addWidget(self.goto_btn)
+        actions_layout.addWidget(self.add_current_btn)
         self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Expanding)
         # self._actions_widget.setMaximumWidth(140)
         self._actions_widget.setMaximumHeight(60)
         self._actions_widget.setLayout(actions_layout)
-        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
+        self.main_grid_layout.addWidget(self._actions_widget, 4, 0, 1, 5)
 
+    def init_scan_list(self):
+        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
+        self.scan_list = TableWidgetDragRows()
+        self.scan_list.set_header()
+        self.scan_list_items = 0
         self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Expanding)
         # self.scan_list.setMaximumHeight(500)
         # self.scan_list.setMinimumWidth(500)
-
         self.main_grid_layout.addWidget(self.scan_list, 6, 0, 1, 14)
-        self.main_grid_layout.addWidget(self._actions_widget, 4, 0, 1, 5)
-        self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 5)
 
     def _get_items(self):
         rows = []
@@ -482,12 +478,20 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         super().__init__(*args, **kwargs)
 
         self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute"]
+        default_hidden = [0, 1, 6]
         self.set_header()
-
         self.scan_list_items = 0
-
-        self.setColumnHidden(0, True)
-        self.setColumnHidden(1, True)
+        self.columns_menu = QtWidgets.QMenu("Hide columns:", self)
+        self.columns_actions = []
+        for n, col in enumerate(self.columns):
+            action = self.columns_menu.addAction(col)
+            action.setCheckable(True)
+            action.setChecked(True)
+            action.triggered.connect(partial(self.column_checked, n))
+            self.columns_actions.append(action)
+            if n in default_hidden:
+                self.setColumnHidden(n, True)
+                action.setChecked(False)
 
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -516,7 +520,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.set_item(row_id, 0, current_point.slot)
         self.set_item(row_id, 1, current_point.labware)
         self.set_item(row_id, 2, current_point.well)
-        self.set_item(row_id, 3, current_point.position_in_well_index)
+        self.set_item(row_id, 3, round(current_point.position_in_well_index))
         self.set_item(row_id, 4, (
             round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
         self.set_item(row_id, 5, round(current_point.relative_focus_z))
@@ -524,35 +528,18 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                                     (round(current_point.position_x), round(current_point.position_y),
                                      round(current_point.position_z)))
 
-    def onHorizontalHeaderClicked(self, event):
-        print(f"Selected horizontal header. Select action.")
-        columns_menu = QtWidgets.QMenu("Hide columns:", self)
-        self.columns_checkbox = QtWidgets.QActionGroup(columns_menu)
-        for col in self.columns:
-            action = QtWidgets.QAction(col)
-            action.setCheckable(True)
-            if col == "Labware" or "Slot":
-                action.setChecked(False)
-            else:
-                action.setChecked(True)
-            self.columns_checkbox.addAction(action)
-        self.columns_checkbox.triggered.connect(self.column_checked)
-        menu = QtWidgets.QMenu().addMenu(columns_menu)
-        action = columns_menu.exec_(self.mapToGlobal(event.pos()))
+    def onHorizontalHeaderClicked(self, point):
+        self.columns_menu.exec_(self.mapToGlobal(point))
 
-        print("Menu opened")
-
-
-
-
-    def column_checked(self):
-        for n, col in enumerate(self.columns_checkbox):
-            if col.isChecked():
-                self.setColumnHidden(n, True)
-            else:
-                self.setColumnHidden(n, False)
-
-
+    def column_checked(self, n):
+        if not self.columns_actions[n].isChecked():
+            self.setColumnHidden(n, True)
+            self.columns_actions[n].setChecked(False)
+            print(f"Hiding column {self.columns_actions[n]}")
+        else:
+            self.setColumnHidden(n, False)
+            self.columns_actions[n].setChecked(True)
+            print(f"Showing column {self.columns_actions[n]}")
 
     def set_header(self):
         self.setColumnCount(len(self.columns))
