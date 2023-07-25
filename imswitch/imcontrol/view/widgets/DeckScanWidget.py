@@ -26,7 +26,6 @@ class DeckScanWidget(NapariHybridWidget):
     sigDeletePresetClicked = QtCore.Signal()
     sigPresetScanDefaultToggled = QtCore.Signal()
 
-
     sigScanInitFilterPos = QtCore.Signal(bool)  # (enabled)
     sigScanShowLast = QtCore.Signal(bool)  # (enabled)
     sigScanStop = QtCore.Signal(bool)  # (enabled)
@@ -55,50 +54,6 @@ class DeckScanWidget(NapariHybridWidget):
         # TODO: implement. Return amount of positions for now.
         return self.scan_list_items
 
-    def init_scan_list(self):
-        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
-        self.scan_list = TableWidgetDragRows()
-        self.scan_list.set_header()
-        self.scan_list_items = 0
-        self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                     QtWidgets.QSizePolicy.Expanding)
-        # self.scan_list.setMaximumHeight(500)
-        # self.scan_list.setMinimumWidth(500)
-        self.main_grid_layout.addWidget(self.scan_list, 11, 0, 1, 8)
-
-    def init_scan_list_actions(self):
-        scan_list_actions_layout = QtWidgets.QGridLayout()
-        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
-        self.scan_list_actions_info = QtWidgets.QLabel("")
-        self.scan_list_actions_info.setFixedHeight(20)
-        self.scan_list_actions_info.setHidden(True)
-
-        scan_list_actions_layout.addWidget(self.ScanStartButton, 1, 0, 2, 1)
-        scan_list_actions_layout.addWidget(self.ScanStopButton, 1, 1, 2, 1)
-        scan_list_actions_layout.addWidget(self.ScanShowLastButton, 1, 2, 2, 1)
-
-        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
-
-        self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                                    QtWidgets.QSizePolicy.Expanding)
-        self.scan_list_actions_widget.setMaximumHeight(120)
-        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
-        self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 3)
-
-
-    def init_scan_list_(self): #, detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
-        self.scan_list = TableWidgetDragRows()
-
-        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
-        self.buttonOpen = guitools.BetterPushButton('Open')
-        self.buttonSave = guitools.BetterPushButton('Save')
-        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
-        self.buttonSave.setStyleSheet("background-color : gray; color: black")
-
-        self.main_grid_layout.addWidget(self.scan_list,12, 0, 1, 8)
-        self.main_grid_layout.addWidget(self.buttonOpen,11, 0, 1, 1)
-        self.main_grid_layout.addWidget(self.buttonSave,11, 1, 1, 1) # DO not display save here
-
     def display_open_file_window(self):
         path = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Open File', '', 'CSV(*.csv)')
@@ -109,34 +64,52 @@ class DeckScanWidget(NapariHybridWidget):
             self, 'Save File', '', 'CSV(*.csv)')
         return path[0]
 
-    def __post_init__(self):
-        # super().__init__(*args, **kwargs)
-        self.ScanFrame = pg.GraphicsLayoutWidget()
-        # initialize all GUI elements
-        # period
-        experiment_configuration_layout = QtWidgets.QGridLayout() 
-        self.ExperimentConfigurationWidget = QtWidgets.QGroupBox("Experiment Configuration")
+    def init_scan_config_widget(self, options=(0, 0, 1, 1)):
         # Scan buttons
+        experiment_configuration_layout = QtWidgets.QGridLayout()
+        self.ScanConfigurationWidget = QtWidgets.QGroupBox("Experiment Configuration")
+
         self.ScanLabelFileName = QtWidgets.QLabel('Experiment Name:')
         self.ScanEditFileName = QtWidgets.QLineEdit('Scan')
-        
-        self.ScanLabelTimePeriod = QtWidgets.QLabel('Period T:') # TODO: change for a h:m:s Widget
+        experiment_configuration_layout.addWidget(self.ScanLabelFileName, 0, 0, 1, 1)
+        experiment_configuration_layout.addWidget(self.ScanEditFileName, 0, 1, 1, 3)
+        # duration N
+        self.ScanRoundsWidget = QtWidgets.QGroupBox("N° Rounds:")
+        scan_rounds_layout = QtWidgets.QHBoxLayout()
+        self.ScanLabelRounds = QtWidgets.QLabel('N° Rounds:')
+        # self.ScanValueRounds = QtWidgets.QLineEdit('1')
+        self.ScanValueRounds = QtWidgets.QSpinBox()
+        self.ScanValueRounds.setMinimum(1)
+        # self.ScanValueRounds.setFixedWidth(30)
+        # scan_rounds_layout.addWidget(self.ScanLabelRounds, 0, 3, 1, 2)
+        scan_rounds_layout.addWidget(self.ScanValueRounds)
+        self.ScanRoundsWidget.setLayout(scan_rounds_layout)
+        experiment_configuration_layout.addWidget(self.ScanRoundsWidget, 1,0,1,1)
+        # duration T
+        self.PeriodWidget = QtWidgets.QGroupBox("Period T:")
+        period_layout = QtWidgets.QHBoxLayout()
         self.ScanLabelTimePeriodHours = QtWidgets.QLabel('Hours')
         self.ScanLabelTimePeriodMinutes = QtWidgets.QLabel('Minutes')
         self.ScanLabelTimePeriodSeconds = QtWidgets.QLabel('Seconds')
-
-        self.ScanValueTimePeriodHours = QtWidgets.QLineEdit('0')
-        self.ScanValueTimePeriodMinutes = QtWidgets.QLineEdit('0')
-        self.ScanValueTimePeriodSeconds = QtWidgets.QLineEdit('0')
-        self.ScanValueTimePeriodHours.setFixedWidth(30)
-        self.ScanValueTimePeriodMinutes.setFixedWidth(30)
-        self.ScanValueTimePeriodSeconds.setFixedWidth(30)
-
-        # duration
-        self.ScanLabelRounds = QtWidgets.QLabel('N° Rounds:')
-        self.ScanValueRounds = QtWidgets.QLineEdit('1')
-        self.ScanValueRounds.setFixedWidth(30)
+        self.ScanValueTimePeriodHours = QtWidgets.QSpinBox()
+        self.ScanValueTimePeriodHours.setMinimum(0)
+        self.ScanValueTimePeriodMinutes = QtWidgets.QSpinBox()
+        self.ScanValueTimePeriodMinutes.setMinimum(0)
+        self.ScanValueTimePeriodMinutes.setMaximum(59)
+        self.ScanValueTimePeriodSeconds = QtWidgets.QSpinBox()
+        self.ScanValueTimePeriodSeconds.setMinimum(0)
+        self.ScanValueTimePeriodSeconds.setMaximum(59)
+        period_layout.addWidget(self.ScanLabelTimePeriodHours)
+        period_layout.addWidget(self.ScanValueTimePeriodHours)
+        period_layout.addWidget(self.ScanLabelTimePeriodMinutes)
+        period_layout.addWidget(self.ScanValueTimePeriodMinutes)
+        period_layout.addWidget(self.ScanLabelTimePeriodSeconds)
+        period_layout.addWidget(self.ScanValueTimePeriodSeconds)
+        self.PeriodWidget.setLayout(period_layout)
+        experiment_configuration_layout.addWidget(self.PeriodWidget, 1, 1, 1, 3)
         # LED
+        led_layout = QtWidgets.QHBoxLayout()
+        self.LEDWidget = QtWidgets.QGroupBox()
         valueDecimalsLED = 1
         valueRangeLED = (0, 2 ** 8)
         tickIntervalLED = 1
@@ -147,112 +120,145 @@ class DeckScanWidget(NapariHybridWidget):
         self.sliderLED.valueChanged.connect(
             lambda value: self.sigSliderLEDValueChanged.emit(value)
         )
+        led_layout.addWidget(self.LabelLED)
+        led_layout.addWidget(self.ValueLED)
+        led_layout.addWidget(self.sliderLED, 3)
+        self.LEDWidget.setLayout(led_layout)
+        experiment_configuration_layout.addWidget(self.LEDWidget, 2,0,1,4)
+        self.ScanConfigurationWidget.setLayout(experiment_configuration_layout)
+        self.main_grid_layout.addWidget(self.ScanConfigurationWidget, *options)
 
-        experiment_configuration_layout.addWidget(self.ScanLabelFileName, 0, 0, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanLabelFileName, 0, 0, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanEditFileName, 0, 1, 1, 2)
-        experiment_configuration_layout.addWidget(self.ScanLabelRounds, 0, 3, 1, 2)
-        experiment_configuration_layout.addWidget(self.ScanValueRounds, 0, 5, 1, 2)
-
-        experiment_configuration_layout.addWidget(self.ScanLabelTimePeriod, 1, 1, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanValueTimePeriodHours, 1, 2, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanLabelTimePeriodHours, 1, 3, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanValueTimePeriodMinutes, 1, 4, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanLabelTimePeriodMinutes, 1, 5, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanValueTimePeriodSeconds, 1, 6, 1, 1)
-        experiment_configuration_layout.addWidget(self.ScanLabelTimePeriodSeconds, 1, 7, 1, 1)
-
-        experiment_configuration_layout.addWidget(self.LabelLED, 2, 1, 1, 1)
-        experiment_configuration_layout.addWidget(self.ValueLED, 2, 2, 1, 1)
-        experiment_configuration_layout.addWidget(self.sliderLED, 2, 3, 1, 4)
-        self.ExperimentConfigurationWidget.setLayout(experiment_configuration_layout)
-
+    def init_zstack_config_widget(self, options=(1, 0, 1, 4)):
         # z-stack
+        zstack_configuration_layout = QtWidgets.QHBoxLayout()
+        self.ZStackConfigurationWidget = QtWidgets.QGroupBox("Z-Stack Configuration")
         self.ScanDoZStack = QtWidgets.QCheckBox('Perform Z-Stack')
         self.ScanDoZStack.setCheckable(True)
         self.ScanDoZStack.stateChanged.connect(self.open_z_stack_options)
+        self.ScanLabelSampleDepth = QtWidgets.QLabel('Sample Depth [um]:')
+        self.ScanValueSampleDepth = QtWidgets.QLineEdit('0')
+        self.ScanLabelNSlices = QtWidgets.QLabel('N° Slices:')
+        # self.ScanValueNSlices = QtWidgets.QLineEdit('5')
+        self.ScanValueNSlices = QtWidgets.QSpinBox()
+        self.ScanValueNSlices.setMinimum(2)
+        self.ScanLabelSampleDepth.setHidden(True)
+        self.ScanValueSampleDepth.setHidden(True)
+        self.ScanLabelNSlices.setHidden(True)
+        self.ScanValueNSlices.setHidden(True)
+        zstack_configuration_layout.addWidget(self.ScanDoZStack)
+        zstack_configuration_layout.addWidget(self.ScanLabelSampleDepth)
+        zstack_configuration_layout.addWidget(self.ScanValueSampleDepth)
+        zstack_configuration_layout.addWidget(self.ScanLabelNSlices)
+        zstack_configuration_layout.addWidget(self.ScanValueNSlices)
+        self.ZStackConfigurationWidget.setLayout(zstack_configuration_layout)
+        self.main_grid_layout.addWidget(self.ZStackConfigurationWidget, *options)
+
+    def init_autofocus_config_widget(self, options=(2, 0, 1, 1)):
         # autofocus
+        autofocus_configuration_layout = QtWidgets.QGridLayout()
+        self.AutofocusConfigurationWidget = QtWidgets.QGroupBox("Autofocus Configuration")
         self.autofocusLabel = QtWidgets.QLabel('Autofocus (range, steps, every n-th round): ')
         self.autofocusRange = QtWidgets.QLineEdit('0.5')
         self.autofocusSteps = QtWidgets.QLineEdit('0.05')
         self.autofocusPeriod = QtWidgets.QLineEdit('1')
         self.autofocusInitial = QtWidgets.QLineEdit('0')
-        
-        self.z_focus = float(self.autofocusInitial.text())
-        self.ScanLabelSampleDepth = QtWidgets.QLabel('Sample Depth [um]:')
-        self.ScanValueSampleDepth = QtWidgets.QLineEdit('0')
-        self.ScanLabelNSlices = QtWidgets.QLabel('N° Slices:')
-        self.ScanValueNSlices = QtWidgets.QLineEdit('5')
-        self.ScanLabelSampleDepth.setHidden(True)
-        self.ScanValueSampleDepth.setHidden(True)
-        self.ScanValueSampleDepth.setFixedWidth(30)
-        self.ScanLabelNSlices.setHidden(True)
-        self.ScanValueNSlices.setHidden(True)
-        self.ScanValueNSlices.setFixedWidth(30)
-
         self.autofocusLED1Checkbox = QtWidgets.QCheckBox('LED 1')
         self.autofocusLED1Checkbox.setCheckable(True)
-
         self.autofocusSelectionLabel = QtWidgets.QLabel('Lightsource for AF: ')
         self.autofocusInitialZLabel = QtWidgets.QLabel('Autofocus (Initial Z): ')
-        
-        # Info
-        self.ScanInfoLabel = QtWidgets.QLabel('Experiment info:')
-        self.ScanInfoLabel.setHidden(True)
-        self.ScanInfoStartTime = QtWidgets.QLabel('Started at: ')
-        self.ScanInfoStartTime.setHidden(True)
-        self.ScanInfoRoundStartTime = QtWidgets.QLabel('Current round started at: ')
-        self.ScanInfoRoundStartTime.setHidden(True)
-        self.ScanInfoTimeToNextRound = QtWidgets.QLabel('Next round in: ')
-        self.ScanInfoTimeToNextRound.setHidden(True)
-        self.ScanInfoNRounds = QtWidgets.QLabel('i/N')
-        self.ScanInfoNRounds.setHidden(True)
-        self.ScanInfoCurrentWell = QtWidgets.QLabel('Scanning well: ')
-        self.ScanInfoCurrentWell.setHidden(True)
+        self.z_focus = float(self.autofocusInitial.text())
+        autofocus_configuration_layout.addWidget(self.autofocusLabel, 0, 0, 1, 1)
+        autofocus_configuration_layout.addWidget(self.autofocusRange, 0, 1, 1, 1)
+        autofocus_configuration_layout.addWidget(self.autofocusSteps, 0, 2, 1, 1)
+        autofocus_configuration_layout.addWidget(self.autofocusPeriod, 0, 3, 1, 1)
+        autofocus_configuration_layout.addWidget(self.autofocusInitialZLabel, 1, 3, 1, 2)
+        autofocus_configuration_layout.addWidget(self.autofocusInitial, 1, 5, 1, 2)
+        autofocus_configuration_layout.addWidget(self.autofocusSelectionLabel, 2, 2, 1, 1)
+        autofocus_configuration_layout.addWidget(self.autofocusLED1Checkbox, 2, 3, 1, 1)
+        self.AutofocusConfigurationWidget.setLayout(autofocus_configuration_layout)
+        self.AutofocusConfigurationWidget.setHidden(True)
+        self.main_grid_layout.addWidget(self.AutofocusConfigurationWidget, *options)
 
+    def init_info_widget(self, options = (3,0,1,1)):
+        # Info
+        scan_info_layout = QtWidgets.QGridLayout()
+        self.ScanInfoWidget = QtWidgets.QGroupBox("Scan Information:")
+        self.ScanInfoLabel = QtWidgets.QLabel('Experiment info:')
+        self.ScanInfoRoundStartTime = QtWidgets.QLabel('Current round started at: ')
+        self.ScanInfoTimeToNextRound = QtWidgets.QLabel('Next round in: ')
+        self.ScanInfoNRounds = QtWidgets.QLabel('i/N')
+        self.ScanInfoCurrentWell = QtWidgets.QLabel('Scanning well: ')
+        scan_info_layout.addWidget(self.ScanInfoLabel, 0, 0, 1, 4)
+        scan_info_layout.addWidget(self.ScanInfoNRounds, 1, 0, 1, 2)
+        scan_info_layout.addWidget(self.ScanInfoRoundStartTime, 1, 2, 1, 2)
+        scan_info_layout.addWidget(self.ScanInfoTimeToNextRound, 2, 2, 1, 4)
+        scan_info_layout.addWidget(self.ScanInfoCurrentWell, 2, 0, 1, 4)
+        self.ScanInfoWidget.setLayout(scan_info_layout)
+        [widget.setHidden(True) if widget.isWidgetType() else False for widget in self.ScanInfoWidget.children() ]
+        # self.ScanInfoWidget.setHidden(True)
+        self.main_grid_layout.addWidget(self.ScanInfoWidget, *options)
+
+    def show_scan_info(self):
+        self.ScanInfoWidget.setHidden(False)
+
+    def init_scan_list_widget(self, options = (5,0,1,1)):
+        # Scan list
+        self.scan_list = TableWidgetDragRows()
+        self.scan_list.set_header()
+        self.scan_list_items = 0
+        self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                     QtWidgets.QSizePolicy.Expanding)
+        self.main_grid_layout.addWidget(self.scan_list, *options)
+
+    def init_actions_widget(self, options = (4,0,1,1)):
+        # Scan List actions
+        scan_list_actions_layout = QtWidgets.QGridLayout()
+        self.ScanListActionsWidget = QtWidgets.QGroupBox("Scan List Actions")
+        self.scan_list_actions_info = QtWidgets.QLabel("")
+        self.scan_list_actions_info.setFixedHeight(20)
+        self.scan_list_actions_info.setHidden(True)
         self.ScanStartButton = guitools.BetterPushButton('Start')
+        self.ScanStartButton.setFixedHeight(35)
         self.ScanStartButton.setCheckable(False)
         self.ScanStartButton.toggled.connect(self.sigScanStart)
         self.ScanStopButton = guitools.BetterPushButton('Stop')
+        self.ScanStopButton.setFixedHeight(35)
         self.ScanStopButton.setCheckable(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
         self.ScanShowLastButton = guitools.BetterPushButton('Show Last')
+        self.ScanShowLastButton.setFixedHeight(35)
         self.ScanShowLastButton.setCheckable(False)
         self.ScanShowLastButton.toggled.connect(self.sigScanShowLast)
+        self.ScanInfoStartTime = QtWidgets.QLabel('')
+        self.ScanInfoStartTime.setFixedHeight(20)
+
+        scan_list_actions_layout.addWidget(self.ScanInfoStartTime, 2, 0, 1, 3)
+
+        scan_list_actions_layout.addWidget(self.ScanStartButton, 1, 0, 1, 1)
+        scan_list_actions_layout.addWidget(self.ScanStopButton, 1, 1, 1, 1)
+        scan_list_actions_layout.addWidget(self.ScanShowLastButton, 1, 2, 1, 1)
+        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 0, 0, 1, 3)
+        self.ScanListActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                 QtWidgets.QSizePolicy.Expanding)
+        self.ScanListActionsWidget.setMaximumHeight(120)
+        self.ScanListActionsWidget.setLayout(scan_list_actions_layout)
+        self.main_grid_layout.addWidget(self.ScanListActionsWidget, *options)
+
+    def __post_init__(self):
         # Defining layout
         self.main_grid_layout = QtWidgets.QGridLayout()
         self.setLayout(self.main_grid_layout)
+        # super().__init__(*args, **kwargs)
+        self.ScanFrame = pg.GraphicsLayoutWidget()
+        # initialize all GUI elements
+        self.init_scan_config_widget((0, 0, 1, 4))
+        self.init_zstack_config_widget((1, 0, 1, 4))
+        self.init_autofocus_config_widget((2, 0, 1, 4))
+        self.init_info_widget((3, 2, 1, 2))
+        self.init_actions_widget((3,0,1,2))
+        self.init_scan_list_widget((5,0,1,4))
 
-        self.main_grid_layout.addWidget(self.ScanDoZStack, 3, 0, 1, 1)
-        self.main_grid_layout.addWidget(self.ScanLabelSampleDepth, 3, 1, 1, 1)
-        self.main_grid_layout.addWidget(self.ScanValueSampleDepth, 3, 2, 1, 1)
-        self.main_grid_layout.addWidget(self.ScanLabelNSlices, 3, 3, 1, 1)
-        self.main_grid_layout.addWidget(self.ScanValueNSlices, 3, 4, 1, 1)
-        # filesettings
-        self.main_grid_layout.addWidget(self.ScanInfoLabel, 6, 0, 1, 5)
-        self.main_grid_layout.addWidget(self.ScanInfoNRounds, 8, 0, 1, 2)
-        self.main_grid_layout.addWidget(self.ScanInfoStartTime, 7, 0, 1, 2)
-        self.main_grid_layout.addWidget(self.ScanInfoRoundStartTime, 7, 4, 1, 2)
-        self.main_grid_layout.addWidget(self.ScanInfoTimeToNextRound, 8, 4, 1, 2)
-        self.main_grid_layout.addWidget(self.ScanInfoCurrentWell, 8, 2, 1, 2)
-
-        # autofocus
-        # self.main_grid_layout.addWidget(self.autofocusLabel, 8, 0, 1, 1)
-        # self.main_grid_layout.addWidget(self.autofocusRange, 8, 1, 1, 1) # Do not show for now. We don't use AF yet
-        # self.main_grid_layout.addWidget(self.autofocusSteps, 8, 2, 1, 1)
-        # self.main_grid_layout.addWidget(self.autofocusPeriod, 8, 3, 1, 1)
-        self.main_grid_layout.addWidget(self.autofocusInitialZLabel, 5, 3, 1, 2)
-        self.main_grid_layout.addWidget(self.autofocusInitial, 5, 5, 1, 2)
-        # self.main_grid_layout.addWidget(self.autofocusSelectionLabel, 9, 2, 1, 1)
-        # self.main_grid_layout.addWidget(self.autofocusLED1Checkbox, 9, 3, 1, 1)
-        # start stop
-        self.main_grid_layout.addWidget(self.ScanStartButton, 5, 0, 2, 1)
-        self.main_grid_layout.addWidget(self.ScanStopButton, 5, 1, 2, 1)
-        self.main_grid_layout.addWidget(self.ScanShowLastButton, 5, 2, 2, 1)
         self.layer = None
-
-        self.init_scan_list()
-        self.init_scan_list_actions()
 
     def isAutofocus(self):
         if self.autofocusLED1Checkbox.isChecked():
@@ -316,18 +322,18 @@ class DeckScanWidget(NapariHybridWidget):
 
     def getZStackValues(self):
         valueZdepth = float(self.ScanValueSampleDepth.text())
-        valueZslices = float(self.ScanValueNSlices.text())
+        valueZslices = self.ScanValueNSlices.value()
         valueZenabled = bool(self.ScanDoZStack.isChecked())
 
         return valueZdepth, valueZslices, valueZenabled
 
     def getTimelapseValues(self):
-        h = float(self.ScanValueTimePeriodHours.text())
-        m = float(self.ScanValueTimePeriodMinutes.text())
-        s = float(self.ScanValueTimePeriodSeconds.text())
-        ScanValueTimePeriod = h*3600 + m*60 + s # Total Time Period in seconds
-
-        ScanValueRounds = int(self.ScanValueRounds.text())
+        h = self.ScanValueTimePeriodHours.value()
+        m = self.ScanValueTimePeriodMinutes.value()
+        s = self.ScanValueTimePeriodSeconds.value()
+        ScanValueTimePeriod = h * 3600 + m * 60 + s  # Total Time Period in seconds
+        # ScanValueRounds = int(self.ScanValueRounds.text())
+        ScanValueRounds = self.ScanValueRounds.value()
         return ScanValueTimePeriod, ScanValueRounds
 
     def getFilename(self):
@@ -337,14 +343,15 @@ class DeckScanWidget(NapariHybridWidget):
     def setNImages(self, nRounds):
         nRounds2Do = self.getTimelapseValues()[-1]
         self.ScanInfoNRounds.setHidden(False)
-        self.ScanInfoNRounds.setText(f'Rounds: {str(nRounds)}/{str(nRounds2Do)}')
+        self.ScanInfoNRounds.setText(f'Round: {str(nRounds)}/{str(nRounds2Do)}')
 
     def update_widget_text(self, widget, text):
         widget.setHidden(False)
         widget.setText(text)
 
     def show_info(self, info):
-        self.ScanInfoLabel.setHidden(False)
+        if self.ScanInfoLabel.isHidden():
+            self.ScanInfoLabel.setHidden(False)
         self.update_widget_text(self.ScanInfoLabel, info)
 
     # Copyright (C) 2020-2021 ImSwitch developers

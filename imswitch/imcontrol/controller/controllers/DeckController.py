@@ -46,18 +46,18 @@ class DeckController(LiveUpdatedController):
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
         self.initialize_widget(deck=self.deck_definition.deck, labware=self.deck_definition.labwares)
         # Has control over positioner
-        self.initialize_positioners()
+        self.initialize_positioners(options=(0,0,1,2))
         # self.selected_slot = self.deck_definition.slots_list[0] # Choose first one by default
         self.selected_well = None
         self.relative_focal_plane = None
         self.scan_list: List[ScanPoint] = []
 
     def initialize_widget(self, deck, labware):
-        self._widget.initialize_deck(deck, labware)
-        self._widget.init_scan_list()
-        self._widget.init_actions()
-        self._widget.init_scan_list_actions()
-        self._widget.init_beacons()
+        self._widget.initialize_deck(deck, labware, (3,1,1,1))
+        self._widget.init_scan_list((4,0,1,2))
+        self._widget.init_actions((2,0,1,1))
+        self._widget.init_scan_list_actions((3,0,1,1))
+        self._widget.init_beacons((1,0,1,1))
         # Connect widget´s buttons
         self.connect_signals()
         self.connect_widget_buttons()
@@ -80,6 +80,13 @@ class DeckController(LiveUpdatedController):
 
         except Exception as e:
             self.__logger.debug(f"No well selected: Please, select a well before adding beacons. {e}")
+
+    @APIExport(runOnUIThread=True)
+    def select_well(self, well):
+        self.__logger.debug(f"Well {well} in slot {self.selected_slot}")
+        self.selected_well = well
+        self._widget.select_well(well)
+        self.connect_go_to()
 
     def parse_position(self, current_position: Point) -> ScanPoint:
         current_position = self.retranslate_position(current_position)
@@ -112,7 +119,6 @@ class DeckController(LiveUpdatedController):
             self.update_list_in_widget()
             self._widget.scan_list_actions_info.setText("Unsaved changes.")
             self._widget.scan_list_actions_info.setHidden(False)
-
         except Exception as e:
             self.__logger.debug(f"Error when updating values. {e}")
 
@@ -133,7 +139,7 @@ class DeckController(LiveUpdatedController):
 
     def clear_scan_list(self):
         self.scan_list = []
-        self._widget.clear_scan_list()
+        self.update_list_in_widget()
         self._widget.scan_list_actions_info.setText(f"Cleared scan list.")
         self._widget.scan_list_actions_info.setHidden(False)
         self.__logger.debug(f"Scan list cleared")
@@ -148,6 +154,8 @@ class DeckController(LiveUpdatedController):
             self._widget.scan_list_actions_info.setText(f"Opened file: {os.path.split(path)[1]}")
             self._widget.scan_list_actions_info.setHidden(False)
             self.__logger.debug(f"Opened file: {path}")
+            if self._widget.open_in_scanner_window():
+                self._commChannel.sigOpenInScannerClicked.emit(path)
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
 
@@ -166,7 +174,7 @@ class DeckController(LiveUpdatedController):
     def go_to_position_in_list(self, row):
         abs_pos = self.scan_list[row].get_absolute_position()
         self.move(new_position=Point(*abs_pos))
-        self.__logger.debug(f"Moved to position in row {row}: {abs_pos}")
+        self.__logger.debug(f"Moving to position in row {row}: {abs_pos}")
 
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
@@ -213,7 +221,7 @@ class DeckController(LiveUpdatedController):
     def selected_slot(self, slot):
         self._selected_slot = slot
 
-    def initialize_positioners(self):
+    def initialize_positioners(self, options = (0,0,1,1)):
         # Has control over positioner
         self.positioner_name = self._master.positionersManager.getAllDeviceNames()[0]
         self.positioner = self._master.positionersManager[self.positioner_name]
@@ -224,7 +232,7 @@ class DeckController(LiveUpdatedController):
             hasSpeed = hasattr(pManager, 'speed')
             hasHome = hasattr(pManager, 'home')
             hasStop = hasattr(pManager, 'stop')
-            self._widget.addPositioner(pName, pManager.axes, hasSpeed, hasHome, hasStop)
+            self._widget.addPositioner(pName, pManager.axes, hasSpeed, hasHome, hasStop, options)
             for axis in pManager.axes:
                 self.setSharedAttr(axis, _positionAttr, pManager.position[axis])
                 if hasSpeed:
@@ -369,17 +377,10 @@ class DeckController(LiveUpdatedController):
     @APIExport(runOnUIThread=True)
     def select_labware(self, slot):
         self.__logger.debug(f"Slot {slot}")
-        self._widget.select_labware(slot)
+        self._widget.select_labware(slot, options= (1,1,2,1))
         self.selected_slot = slot
         self.selected_well = None
         self.connect_wells()
-
-    @APIExport(runOnUIThread=True)
-    def select_well(self, well):
-        self.__logger.debug(f"Well {well} in slot {self.selected_slot}")
-        self.selected_well = well
-        self._widget.select_well(well)
-        self.connect_go_to()
 
     def retranslate_position(self, position: Point, flip_xy=False):
         if flip_xy:  # TODO: avoid this by using normal coordinate system

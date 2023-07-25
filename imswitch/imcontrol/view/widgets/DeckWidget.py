@@ -51,12 +51,9 @@ class DeckWidget(Widget):
                                                 "Do you want to load the current scan list in the Deck Scanner?",
                                                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if choice == QtWidgets.QMessageBox.Yes:
-
-            print("Open list in DeckScanner")
             QtWidgets.QMessageBox.information(self, "Scan list loaded in DeckScanner.",
                                               'Scan list loaded. Open the DeckScanner.',
                                               QtWidgets.QMessageBox.Ok)
-            print("Click DeckScanner")
             return True
         else:
             return False
@@ -80,7 +77,7 @@ class DeckWidget(Widget):
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
         self.beacons_selected_well.setText(f"{well}")
 
-    def select_labware(self, slot):
+    def select_labware(self, slot, options=(1,1,2,1)):
         self.current_slot = slot
         if hasattr(self, "_wells_group_box"):
             self.main_grid_layout.removeWidget(self._wells_group_box)
@@ -126,7 +123,7 @@ class DeckWidget(Widget):
         # self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
         #                         QtWidgets.QSizePolicy.Expanding)
         self._wells_group_box.setLayout(layout)
-        self.main_grid_layout.addWidget(self._wells_group_box, 2, 5, 4, 9)
+        self.main_grid_layout.addWidget(self._wells_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
     def add_home(self, layout):
@@ -152,7 +149,7 @@ class DeckWidget(Widget):
         self.zero.setStyleSheet("background-color: white; color: black; font-size: 14px")
         layout.addWidget(self.zero)
 
-    def initialize_deck(self, deck_dict: Dict, labwares_dict: Dict):
+    def initialize_deck(self, deck_dict: Dict, labwares_dict: Dict, options = (1,0,1,1)):
         self._deck_dict = deck_dict
         self._labware_dict = labwares_dict
 
@@ -197,116 +194,13 @@ class DeckWidget(Widget):
         self.select_labware(used_slots[0])
         if len(used_slots) == 1 and "1" in self.deck_slots.keys():
             self.deck_slots["1"].setHidden(True)
-        self.main_grid_layout.addWidget(self._deck_group_box, 1, 5, 1, 9)
+        self.main_grid_layout.addWidget(self._deck_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
     def set_list_item(self, row, col, item):
         self.scan_list.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
 
-    def init_beacons(self):
-        self.beacons_widget = QtWidgets.QGroupBox("Beacons")
-        beacons_layout = QtWidgets.QGridLayout()
-        self.beacons_nx = QtWidgets.QLineEdit("1")
-        self.beacons_ny = QtWidgets.QLineEdit("1")
-        self.beacons_dx = QtWidgets.QLineEdit("300")
-        self.beacons_dy = QtWidgets.QLineEdit("300")
-        self.beacons_add = guitools.BetterPushButton('ADD')
-        self.beacons_selected_well = QtWidgets.QLabel("<Well>")
-        # beacons_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 0, 1, 1)
-        beacons_layout.addWidget(QtWidgets.QLabel("Nx x Ny"), 0, 0, 1, 1)
-        beacons_layout.addWidget(QtWidgets.QLabel("Dx x Dy [um]"), 1, 0, 1, 1)
-        # beacons_layout.addWidget(self.pos_in_well_lined, 0, 2, 1, 1)
-        beacons_layout.addWidget(self.beacons_nx, 0, 1, 1, 1)
-        beacons_layout.addWidget(self.beacons_ny, 0, 2, 1, 1)
-        beacons_layout.addWidget(self.beacons_dx, 1, 1, 1, 1)
-        beacons_layout.addWidget(self.beacons_dy, 1, 2, 1, 1)
-        beacons_layout.addWidget(self.beacons_selected_well, 0, 3, 1, 1)
-        beacons_layout.addWidget(self.beacons_add, 1, 3, 1, 1)
-        self.beacons_widget.setMaximumHeight(120)
-        self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Expanding)
-        self.beacons_widget.setLayout(beacons_layout)
-        self.main_grid_layout.addWidget(self.beacons_widget, 1, 0, 3, 5)
-
-    def init_scan_list_actions(self):
-        scan_list_actions_layout = QtWidgets.QGridLayout()
-        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
-        self.scan_list_actions_info = QtWidgets.QLabel("")
-        self.scan_list_actions_info.setFixedHeight(20)
-        self.scan_list_actions_info.setHidden(True)
-
-        self.buttonOpen = guitools.BetterPushButton('Open')
-        self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                      QtWidgets.QSizePolicy.Expanding)
-        self.buttonOpen.setFixedHeight(25)
-        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
-        self.buttonSave = guitools.BetterPushButton('Save')
-        self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                      QtWidgets.QSizePolicy.Expanding)
-        self.buttonSave.setFixedHeight(25)
-        self.buttonSave.setStyleSheet("background-color : gray; color: black")
-        self.buttonClear = guitools.BetterPushButton('Clear')
-        self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                       QtWidgets.QSizePolicy.Expanding)
-        self.buttonClear.setFixedHeight(25)
-        self.buttonClear.setStyleSheet("background-color : gray; color: black")
-
-        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
-        scan_list_actions_layout.addWidget(self.buttonOpen, 0, 0, 1, 1)
-        scan_list_actions_layout.addWidget(self.buttonSave, 0, 1, 1, 1)
-        scan_list_actions_layout.addWidget(self.buttonClear, 0, 2, 1, 1)
-        self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                                    QtWidgets.QSizePolicy.Expanding)
-        self.scan_list_actions_widget.setMaximumHeight(120)
-        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
-        self.main_grid_layout.addWidget(self.scan_list_actions_widget, 5, 0, 1, 5)
-
-    def init_actions(self):
-        self._actions_widget = QtWidgets.QGroupBox("Actions")
-        actions_layout = QtWidgets.QHBoxLayout()
-        self.goto_btn = guitools.BetterPushButton('GO TO')
-        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
-        actions_layout.addWidget(self.goto_btn)
-        actions_layout.addWidget(self.add_current_btn)
-        self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                           QtWidgets.QSizePolicy.Expanding)
-        # self._actions_widget.setMaximumWidth(140)
-        self._actions_widget.setMaximumHeight(60)
-        self._actions_widget.setLayout(actions_layout)
-        self.main_grid_layout.addWidget(self._actions_widget, 4, 0, 1, 5)
-
-    def init_scan_list(self):
-        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
-        self.scan_list = TableWidgetDragRows()
-        self.scan_list.set_header()
-        self.scan_list_items = 0
-        self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                     QtWidgets.QSizePolicy.Expanding)
-        # self.scan_list.setMaximumHeight(500)
-        # self.scan_list.setMinimumWidth(500)
-        self.main_grid_layout.addWidget(self.scan_list, 6, 0, 1, 14)
-
-    def _get_items(self):
-        rows = []
-        for row in range(self.scan_list.rowCount()):
-            rowdata = []
-            for column in range(self.scan_list.columnCount()):
-                item = self.scan_list.item(row, column)
-                if item is not None:
-                    rowdata.append(item.text())
-                else:
-                    rowdata.append('')
-            rows.append(rowdata)
-
-        return rows
-
-    def getAbsPosition(self, positionerName, axis):
-        """ Returns the absolute position of the  specified positioner axis in
-        micrometers. """
-        parNameSuffix = self._getParNameSuffix(positionerName, axis)
-        return float(self.pars['AbsolutePosEdit' + parNameSuffix].text())
-
-    def addPositioner(self, positionerName, axes, hasSpeed, hasHome=True, hasStop=True):
+    def addPositioner(self, positionerName, axes, hasSpeed, hasHome=True, hasStop=True, options = (0,0,1,1)):
         self._positioner_widget = QtWidgets.QGroupBox(f"{positionerName}")
         layout = QtWidgets.QGridLayout()
         for i in range(len(axes)):
@@ -376,7 +270,110 @@ class DeckWidget(Widget):
         self._positioner_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                               QtWidgets.QSizePolicy.Expanding)
         self._positioner_widget.setLayout(layout)
-        self.main_grid_layout.addWidget(self._positioner_widget, 0, 0, 1, 14)
+        self.main_grid_layout.addWidget(self._positioner_widget, *options)
+
+    def init_beacons(self, options=(3,0,1,1)):
+        self.beacons_widget = QtWidgets.QGroupBox("Beacons")
+        beacons_layout = QtWidgets.QGridLayout()
+        self.beacons_nx = QtWidgets.QLineEdit("1")
+        self.beacons_ny = QtWidgets.QLineEdit("1")
+        self.beacons_dx = QtWidgets.QLineEdit("300")
+        self.beacons_dy = QtWidgets.QLineEdit("300")
+        self.beacons_add = guitools.BetterPushButton('ADD')
+        self.beacons_selected_well = QtWidgets.QLabel("<Well>")
+        # beacons_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 0, 1, 1)
+        beacons_layout.addWidget(QtWidgets.QLabel("Nx x Ny"), 0, 0, 1, 1)
+        beacons_layout.addWidget(QtWidgets.QLabel("Dx x Dy [um]"), 1, 0, 1, 1)
+        # beacons_layout.addWidget(self.pos_in_well_lined, 0, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_nx, 0, 1, 1, 1)
+        beacons_layout.addWidget(self.beacons_ny, 0, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_dx, 1, 1, 1, 1)
+        beacons_layout.addWidget(self.beacons_dy, 1, 2, 1, 1)
+        beacons_layout.addWidget(self.beacons_selected_well, 0, 3, 1, 1)
+        beacons_layout.addWidget(self.beacons_add, 1, 3, 1, 1)
+        self.beacons_widget.setMaximumHeight(120)
+        self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                          QtWidgets.QSizePolicy.Expanding)
+        self.beacons_widget.setLayout(beacons_layout)
+        self.main_grid_layout.addWidget(self.beacons_widget, *options)
+
+    def init_scan_list_actions(self, options=(1,0,1,1)):
+        scan_list_actions_layout = QtWidgets.QGridLayout()
+        self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
+        self.scan_list_actions_info = QtWidgets.QLabel("")
+        self.scan_list_actions_info.setFixedHeight(20)
+        self.scan_list_actions_info.setHidden(True)
+
+        self.buttonOpen = guitools.BetterPushButton('Open')
+        self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Expanding)
+        self.buttonOpen.setFixedHeight(25)
+        self.buttonOpen.setStyleSheet("background-color : gray; color: black")
+        self.buttonSave = guitools.BetterPushButton('Save')
+        self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                      QtWidgets.QSizePolicy.Expanding)
+        self.buttonSave.setFixedHeight(25)
+        self.buttonSave.setStyleSheet("background-color : gray; color: black")
+        self.buttonClear = guitools.BetterPushButton('Clear')
+        self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                       QtWidgets.QSizePolicy.Expanding)
+        self.buttonClear.setFixedHeight(25)
+        self.buttonClear.setStyleSheet("background-color : gray; color: black")
+
+        scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
+        scan_list_actions_layout.addWidget(self.buttonOpen, 0, 0, 1, 1)
+        scan_list_actions_layout.addWidget(self.buttonSave, 0, 1, 1, 1)
+        scan_list_actions_layout.addWidget(self.buttonClear, 0, 2, 1, 1)
+        self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                    QtWidgets.QSizePolicy.Expanding)
+        self.scan_list_actions_widget.setMaximumHeight(120)
+        self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
+        self.main_grid_layout.addWidget(self.scan_list_actions_widget, *options)
+
+    def init_actions(self, options = (0,0,1,1)):
+        self._actions_widget = QtWidgets.QGroupBox("Actions")
+        actions_layout = QtWidgets.QHBoxLayout()
+        self.goto_btn = guitools.BetterPushButton('GO TO')
+        self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
+        actions_layout.addWidget(self.goto_btn)
+        actions_layout.addWidget(self.add_current_btn)
+        self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                           QtWidgets.QSizePolicy.Expanding)
+        # self._actions_widget.setMaximumWidth(140)
+        self._actions_widget.setMaximumHeight(60)
+        self._actions_widget.setLayout(actions_layout)
+        self.main_grid_layout.addWidget(self._actions_widget, *options)
+
+    def init_scan_list(self, options=(4,0,1,1)):
+        # , detectorName, detectorModel, detectorParameters, detectorActions,supportedBinnings, roiInfos):
+        self.scan_list = TableWidgetDragRows()
+        self.scan_list.set_header()
+        self.scan_list_items = 0
+        self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                     QtWidgets.QSizePolicy.Expanding)
+        # self.scan_list.setMaximumHeight(500)
+        # self.scan_list.setMinimumWidth(500)
+        self.main_grid_layout.addWidget(self.scan_list, *options)
+
+    def _get_items(self):
+        rows = []
+        for row in range(self.scan_list.rowCount()):
+            rowdata = []
+            for column in range(self.scan_list.columnCount()):
+                item = self.scan_list.item(row, column)
+                if item is not None:
+                    rowdata.append(item.text())
+                else:
+                    rowdata.append('')
+            rows.append(rowdata)
+
+        return rows
+
+    def getAbsPosition(self, positionerName, axis):
+        """ Returns the absolute position of the  specified positioner axis in
+        micrometers. """
+        parNameSuffix = self._getParNameSuffix(positionerName, axis)
+        return float(self.pars['AbsolutePosEdit' + parNameSuffix].text())
 
     @property
     def current_slot(self):
@@ -417,16 +414,6 @@ class DeckWidget(Widget):
     @current_absolute_position.setter
     def current_absolute_position(self, current_absolute_position):
         self._current_absolute_position = current_absolute_position
-
-    # @property
-    # def positions_in_well(self):
-    #     try:
-    #         if int(self.pos_in_well_lined.text()) > 4:
-    #             return 4
-    #         else:
-    #             return int(self.pos_in_well_lined.text())
-    #     except ValueError:
-    #         return 1
 
     def getStepSize(self, positionerName, axis):
         """ Returns the step size of the specified positioner axis in
@@ -470,7 +457,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigGoToTableClicked = QtCore.Signal(int)
     sigAdjustFocusClicked = QtCore.Signal(int)
     sigDeleteRowClicked = QtCore.Signal(int)
-    sigSelectedDragRows = QtCore.Signal(list, int) # list of selected rows, position to drag to.
+    sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
 
     from locai.utils.scan_list import ScanPoint
 
@@ -478,7 +465,17 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         super().__init__(*args, **kwargs)
 
         self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute"]
+        self.column_mapping = {
+            "Slot": "slot",
+            "Labware": "labware",
+            "Well": "well",
+            "Index": "position_in_well_index",
+            "Offset": ("offset_from_center_x", "offset_from_center_y"),
+            "Z_focus": "relative_focus_z",
+            "Absolute": ("position_x", "position_y", "position_z"),
+        }
         default_hidden = [0, 1, 6]
+        self.mapping = {}
         self.set_header()
         self.scan_list_items = 0
         self.columns_menu = QtWidgets.QMenu("Hide columns:", self)
@@ -503,11 +500,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
 
-        # self.horizontalHeader().sectionClicked.connect(self.onHorizontalHeaderClicked)
-
         self.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
         self.horizontalHeader().customContextMenuRequested.connect(self.onHorizontalHeaderClicked)
-
         # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
@@ -525,10 +519,11 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             round(current_point.offset_from_center_x), round(current_point.offset_from_center_y)))
         self.set_item(row_id, 5, round(current_point.relative_focus_z))
         self.set_item(row_id, 6,
-                                    (round(current_point.position_x), round(current_point.position_y),
-                                     round(current_point.position_z)))
+                      (round(current_point.position_x), round(current_point.position_y),
+                       round(current_point.position_z)))
 
     def onHorizontalHeaderClicked(self, point):
+        # https://www.programcreek.com/python/?code=danigargu%2Fheap-viewer%2Fheap-viewer-master%2Fheap_viewer%2Fwidgets%2Fstructs.py
         self.columns_menu.exec_(self.mapToGlobal(point))
 
     def column_checked(self, n):
@@ -571,10 +566,12 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             for i in self.selectionModel().selection().indexes():
                 row, column = i.row(), i.column()
             menu = QtWidgets.QMenu()
-            goto_action = menu.addAction("Go To") if self.isSignalConnected(self.getSignal(self, "sigGoToTableClicked")) else None
-            delete_action = menu.addAction("Delete") if self.isSignalConnected(self.getSignal(self, "sigDeleteRowClicked")) else None
-            adjust_focus_action = menu.addAction("Adjust Focus") if self.isSignalConnected(self.getSignal(self, "sigAdjustFocusClicked")) else None
-
+            goto_action = menu.addAction("Go To") if self.isSignalConnected(
+                self.getSignal(self, "sigGoToTableClicked")) else None
+            delete_action = menu.addAction("Delete") if self.isSignalConnected(
+                self.getSignal(self, "sigDeleteRowClicked")) else None
+            adjust_focus_action = menu.addAction("Adjust Focus") if self.isSignalConnected(
+                self.getSignal(self, "sigAdjustFocusClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)

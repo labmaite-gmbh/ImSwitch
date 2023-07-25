@@ -39,7 +39,7 @@ class ImageI(pydantic.BaseModel):
 
 @dataclasses.dataclass
 class ImageInfo:
-    slot: Optional[str]
+    slot: Optional[int]
     labware: Optional[str]
     well: str
     position_in_well_index: int
@@ -77,8 +77,6 @@ class DeckScanController(LiveUpdatedController):
         self.initialize_positioners()
         self.initialize_detectors()
         self.initialize_leds()
-        # Current position to scan -> row from list
-        self.current_scanning_row = (None, None, (None, None), None, (None, None, None))
         # Time to settle image (stage vibrations)
         self.tUnshake = 0.2
         # From MCT:
@@ -92,9 +90,7 @@ class DeckScanController(LiveUpdatedController):
         # connect XY Stagescanning live update  https://github.com/napari/napari/issues/1110
         # autofocus related
         self.isAutofocusRunning = False
-
         self.isScanrunning = False
-        self._widget.ScanShowLastButton.setEnabled(False)
 
         self.connect_signals()
         self.connect_widget_buttons()
@@ -104,8 +100,7 @@ class DeckScanController(LiveUpdatedController):
         self._widget.ScanStartButton.clicked.connect(self.startScan)
         self._widget.ScanStopButton.clicked.connect(self.stopScan)
         self._widget.ScanShowLastButton.clicked.connect(self.showLast)
-        self._widget.buttonOpen.clicked.connect(partial(self.open_scan_list_from_file, False))
-        self._widget.buttonSave.clicked.connect(self.save_scan_list_to_file)
+        self._widget.ScanShowLastButton.setEnabled(False)
 
     def connect_signals(self):
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
@@ -117,7 +112,7 @@ class DeckScanController(LiveUpdatedController):
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
 
-    def open_scan_list_from_file(self, path = False):
+    def open_scan_list_from_file(self, path=False):
         if path is False:
             path = self._widget.display_open_file_window()
         self.scan_list = []
@@ -149,6 +144,7 @@ class DeckScanController(LiveUpdatedController):
     def go_to_position_in_list(self, row):
         abs_pos = self.scan_list[row].get_absolute_position()
         self.move(new_position=Point(*abs_pos))
+        self.__logger.debug(f"Moving to position in row {row}: {abs_pos}")
 
     # Scan Logic
     def setAutoFocusIsRunning(self, isRunning):
@@ -191,7 +187,7 @@ class DeckScanController(LiveUpdatedController):
         except  Exception as e:
             self._logger.error(e)
 
-    def get_scan_list_queue(self):
+    def get_scan_list_queue_(self):
         queue = Queue(maxsize=self._widget.scan_list_items)
         for row in range(self._widget.scan_list.rowCount()):
             rowdata = []
@@ -212,11 +208,10 @@ class DeckScanController(LiveUpdatedController):
         # start the timelapse
         # get parameters from GUI
         self.zStackDepth, self.zStackStep, self.zStackEnabled = self._widget.getZStackValues()
-        # TODO: populate positions_list with scan_list and give it to takeTimelapse
-        positions_list = self._widget.get_all_positions()
+        # positions_list = self._widget.get_all_positions()
         self.timePeriod, self.nDuration = self._widget.getTimelapseValues()
         valid_start = True
-        if positions_list < 1:
+        if len(self.scan_list) < 1:
             self.__logger.debug("Scan list empty: please load a valid .csv file before starting the scan.")
             self._widget.show_info("Scan list empty: please load a valid .csv file before starting the scan.")
             valid_start = False
@@ -246,7 +241,7 @@ class DeckScanController(LiveUpdatedController):
             self._widget.ScanShowLastButton.setEnabled(False)
             # TODO: freeze scan_list -> edit shouldn´t be available while running.
             # start the timelapse - otherwise we have to wait for the first run after timePeriod to take place..
-            self.takeTimelapse(self.timePeriod, positions_list)
+            self.takeTimelapse(self.timePeriod, self.scan_list)
         else:
             self.isScanrunning = False
             self._widget.ScanStartButton.setEnabled(True)
@@ -266,14 +261,14 @@ class DeckScanController(LiveUpdatedController):
         # this wil run i nthe background
         self.timeLast = 0
         self.timeStart = datetime.now()
-        self._widget.show_info(f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
         self._widget.setNImages(self.nRounds)
         # run as long as the Scan is active
         while self.isScanrunning:
             # stop measurement once done
             if self.nDuration <= self.nRounds:
                 self.isScanrunning = False
-                self._logger.debug("Done with timelapse")
+                self._logger.debug("Done with timelapse.")
+                self._widget.show_info("Done with timelapse.")
                 self._widget.ScanStartButton.setEnabled(True)
                 break
             # initialize a run
@@ -281,13 +276,10 @@ class DeckScanController(LiveUpdatedController):
                 # TODO: include estimation of one run (Autofocus * Z-Stack * Positions * Speed)
                 # run an event
                 self.timeLast = time.time()  # makes sure that the period is measured from launch to launch
-                self._widget.update_widget_text(self._widget.ScanInfoStartTime,
-                                                f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
+                self._widget.ScanInfoStartTime.setText(
+                    f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
-                # Get positions to observe:
-                # Scan queue
-                self.scan_queue = self.get_scan_list_queue()
                 try:
                     # want to do autofocus? -> No!
                     # if False:
@@ -301,8 +293,6 @@ class DeckScanController(LiveUpdatedController):
                     #         self.doAutofocus(autofocusParams)
 
                     if self.LEDValue > 0:
-                        # timestamp_ = str(self.nRounds) + strfdelta(datetime.now() - self.timeStart,
-                        #                                            "_d{days}h{hours}m{minutes}s{seconds}")
                         timestamp_ = strfdelta(datetime.now() - self.timeStart,
                                                "_{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
@@ -316,26 +306,25 @@ class DeckScanController(LiveUpdatedController):
                             if not self.isScanrunning:
                                 break
                     self.nRounds += 1
-                    self.display_current_well("-")
+                    self._widget.update_widget_text(self._widget.ScanInfoCurrentWell,"-")
                     self._widget.setNImages(self.nRounds)
                     self.LastStackLEDArrayLast = np.array(self.LastStackLED)
                     self._widget.ScanShowLastButton.setEnabled(True)
-
                 except Exception as e:
                     self._logger.error(f"Thread closes with Error: {e}")
                     self.positioner.move(value=0, axis="Z", is_blocking=True)
                     raise e
                     # close the controller ina nice way
-
             else:
                 self.update_time_to_next_round(tperiod, True)
-            self.positioner.move(value=0, axis="Z", is_blocking=True)  # TODO: needed?
+            self.positioner.move(value=0, axis="Z", is_blocking=True)
             # pause to not overwhelm the CPU
         time.sleep(0.1)
         self.stopScan()
 
-    def display_current_well(self, well):
-        self._widget.update_widget_text(self._widget.ScanInfoCurrentWell, f"Scanning well: {well}")
+    def display_current_position(self, scan_position: ScanPoint):
+        self._widget.update_widget_text(self._widget.ScanInfoCurrentWell,
+                        f"Scanning: ({int(scan_position.slot)}){scan_position.well}.{int(scan_position.position_in_well_index)}")
 
     def update_time_to_next_round(self, tperiod, sleep=False):
         delta = timedelta(seconds=tperiod) + datetime.fromtimestamp(self.timeLast) - datetime.now()
@@ -408,19 +397,28 @@ class DeckScanController(LiveUpdatedController):
             #     pass
             # return
 
-    def get_current_scan_row(self):
-        queue_item = self.scan_queue.get()
-        if queue_item is None:
-            self.__logger.debug(f"Queue is empty upon scanning")
-            raise ValueError("Queue is empty upon scanning.")
-        elif None not in queue_item:
-            self.current_scanning_row = queue_item
-            self.current_scanning_row[2] = tuple(map(float, queue_item[2].strip('()').split(',')))
-            self.current_scanning_row[3] = float(queue_item[3])
-            self.current_scanning_row[4] = Point(*tuple(map(float, queue_item[4].strip('()').split(','))))
-            return self.current_scanning_row
-        else:
-            raise ValueError("Get rid of None values in the list before scanning.")
+    def parse_scan_list_row(self, queue_item):
+        scan_item_dict = {}
+        for c, col_key, item in enumerate(self._widget.scan_list.column_mapping.items()):
+            if isinstance(item, tuple):
+                for c_, item_ in enumerate(item):
+                    scan_item_dict[item_] = queue_item[c][c_]
+            scan_item_dict[item] = queue_item[c]
+        return ScanPoint(**scan_item_dict)
+
+    # def get_current_scan_row(self):
+    #     queue_item = self.scan_queue.get()
+    #     if queue_item is None:
+    #         self.__logger.debug(f"Queue is empty upon scanning")
+    #         raise ValueError("Queue is empty upon scanning.")
+    #     elif None not in queue_item:
+    #         self.current_scanning_row = queue_item
+    #         self.current_scanning_row[2] = tuple(map(float, queue_item[2].strip('()').split(',')))
+    #         self.current_scanning_row[3] = float(queue_item[3])
+    #         self.current_scanning_row[4] = Point(*tuple(map(float, queue_item[4].strip('()').split(','))))
+    #         return self.current_scanning_row
+    #     else:
+    #         raise ValueError("Get rid of None values in the list before scanning.")
 
     def take_single_image_at_position(self, current_position: Point, intensity):
         self.__logger.info(f"Moving to {current_position}.")
@@ -473,38 +471,35 @@ class DeckScanController(LiveUpdatedController):
         # TODO: include exit/stop logic inside this loop: if I want to stop after 1 well, it need to complete the whole run before deleting the thread.
         image_index = 0
         self._widget.gridLayer = None
-        # TODO: check that the first position is not the one on the list but in the PositionerManager
-        for pos_i, pos_row in enumerate(range(self._widget.scan_list.rowCount())):
-            self.__logger.info(f"Total positions {self._widget.scan_list.rowCount()}. pos_i{pos_i} - pos_row{pos_row}")
+        for pos_i, pos_row in enumerate(self.scan_list):
+            self.__logger.info(f"Scanning position {pos_i}/{len(self.scan_list)}: {pos_row}")
             # Get position to scan
-            # TODO: inform current status through front-end.
-            slot, well, offset, z_focus, current_pos = self.get_current_scan_row()
-            # TODO: avoid this:
-            current_pos = current_pos + Point(0, 0,
-                                              self.z_focus + z_focus - current_pos.z)  # Z-position calculated with z_focus column and self.z_focus
+            current_pos = Point(*pos_row.get_absolute_position())
+            z_focus = pos_row.relative_focus_z
+            current_pos = current_pos + Point(0, 0, self.z_focus + z_focus - current_pos.z)
+            # Z-position calculated with z_focus column and self.z_focus
+            img_info = ImageInfo(slot=pos_row.slot, well=pos_row.well, labware=pos_row.labware,
+                                 offset=pos_row.get_offset(), z_focus=z_focus, pos_abs=current_pos,
+                                 illu_mode=illuMode,
+                                 position_in_well_index=pos_row.position_in_well_index,
+                                 timestamp=timestamp)
 
-            img_info = ImageInfo(slot, well, offset, z_focus, current_pos, illu_mode=illuMode,
-                                 position_idx=image_index, timestamp=timestamp)  # TODO: avoid hardcoded position_idx
-
-            self.__logger.info(f"Currently scanning row: {self.current_scanning_row}")
-            self.display_current_well(well)
+            self.display_current_position(pos_row)
 
             if self.zStackEnabled:
                 for z_index, (z_pos, frame) in enumerate(
                         self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
-                    # img_info.z_focus = z_pos
-                    img_info.z_focus = z_index  # TODO: preferred by Biology -> slice number, not absolute position
+                    img_info.z_focus = z_index
                     self.save_image(frame, img_info)
                     if img_info.illu_mode == "Brightfield":  # store frames for displaying
                         self.LastStackLED.append(frame.copy())
                     self.sigImageReceived.emit()  # => displays image
-
             else:
                 frame = self.take_single_image_at_position(current_pos, intensity)
                 self.save_image(frame, img_info)
                 self.LastStackLED = (frame.copy())
                 self.sigImageReceived.emit()  # => displays image
-                time.sleep(self.tUnshake * 3)  # Time to see image
+                time.sleep(self.tUnshake * 2)  # Time to see image
 
             self.switchOffIllumination()
             image_index += 1
@@ -512,7 +507,6 @@ class DeckScanController(LiveUpdatedController):
             yield pos_i, pos_row, frame
 
     def stopScan(self):
-        self._widget.show_info("Stopping timelapse...")
         # # delete any existing timer
         # try:
         #     del self.timer
@@ -522,6 +516,7 @@ class DeckScanController(LiveUpdatedController):
         try:
             # make sure there is no exisiting thread
             # del self.ScanThread
+            self._widget.show_info("Stopping timelapse...")
             self.isScanrunning = False
             if self.ScanThread is not None:
                 self.ScanThread.join(timeout=10)  # wait 10 seconds for the thread to exit
