@@ -275,8 +275,10 @@ class DeckWidget(Widget):
     def init_beacons(self, options=(3,0,1,1)):
         self.beacons_widget = QtWidgets.QGroupBox("Beacons")
         beacons_layout = QtWidgets.QGridLayout()
-        self.beacons_nx = QtWidgets.QLineEdit("1")
-        self.beacons_ny = QtWidgets.QLineEdit("1")
+        self.beacons_nx = QtWidgets.QSpinBox()
+        self.beacons_nx.setMinimum(1)
+        self.beacons_ny = QtWidgets.QSpinBox()
+        self.beacons_ny.setMinimum(1)
         self.beacons_dx = QtWidgets.QLineEdit("300")
         self.beacons_dy = QtWidgets.QLineEdit("300")
         self.beacons_add = guitools.BetterPushButton('ADD')

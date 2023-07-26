@@ -55,7 +55,7 @@ class ImageInfo:
         if self.slot is None:
             return f"{self.well}_{self.position_in_well_index}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
         else:
-            return f"{self.slot}_{self.well}_{self.position_in_well_index}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
+            return f"{int(self.slot)}_{self.well}_{int(self.position_in_well_index)}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
 
 
 class DeckScanController(LiveUpdatedController):
@@ -278,6 +278,9 @@ class DeckScanController(LiveUpdatedController):
                 self.timeLast = time.time()  # makes sure that the period is measured from launch to launch
                 self._widget.ScanInfoStartTime.setText(
                     f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
+                self._widget.update_widget_text(self._widget.ScanInfoRoundStartTime,
+                                f"Round {self.nRounds+1} strated at {datetime.fromtimestamp(self.timeLast).strftime('%H:%M (%d.%m.%Y)')}")
+
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
                 try:
@@ -294,7 +297,7 @@ class DeckScanController(LiveUpdatedController):
 
                     if self.LEDValue > 0:
                         timestamp_ = strfdelta(datetime.now() - self.timeStart,
-                                               "_{days}dd{hours}hh{minutes}mm")
+                                               "{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
                         illu_mode = "Brightfield"
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
@@ -306,7 +309,7 @@ class DeckScanController(LiveUpdatedController):
                             if not self.isScanrunning:
                                 break
                     self.nRounds += 1
-                    self._widget.update_widget_text(self._widget.ScanInfoCurrentWell,"-")
+                    self._widget.update_widget_text(self._widget.ScanInfoCurrentWell, "-")
                     self._widget.setNImages(self.nRounds)
                     self.LastStackLEDArrayLast = np.array(self.LastStackLED)
                     self._widget.ScanShowLastButton.setEnabled(True)
@@ -324,7 +327,7 @@ class DeckScanController(LiveUpdatedController):
 
     def display_current_position(self, scan_position: ScanPoint):
         self._widget.update_widget_text(self._widget.ScanInfoCurrentWell,
-                        f"Scanning: ({int(scan_position.slot)}){scan_position.well}.{int(scan_position.position_in_well_index)}")
+                                        f"Scanning: Slot {int(scan_position.slot)}, Well {scan_position.well}, Index {int(scan_position.position_in_well_index)}")
 
     def update_time_to_next_round(self, tperiod, sleep=False):
         delta = timedelta(seconds=tperiod) + datetime.fromtimestamp(self.timeLast) - datetime.now()

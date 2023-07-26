@@ -64,7 +64,7 @@ class DeckController(LiveUpdatedController):
 
     def add_beacons(self):
         try:
-            nx, ny = int(self._widget.beacons_nx.text()), int(self._widget.beacons_ny.text())
+            nx, ny = self._widget.beacons_nx.value(), self._widget.beacons_ny.value()
             dx, dy = int(self._widget.beacons_dx.text()), int(self._widget.beacons_dy.text())
             x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
             _, _, z = Point(*self.positioner.get_position())

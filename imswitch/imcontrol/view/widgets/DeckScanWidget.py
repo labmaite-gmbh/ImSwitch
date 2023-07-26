@@ -191,7 +191,7 @@ class DeckScanWidget(NapariHybridWidget):
         scan_info_layout.addWidget(self.ScanInfoLabel, 0, 0, 1, 4)
         scan_info_layout.addWidget(self.ScanInfoNRounds, 1, 0, 1, 2)
         scan_info_layout.addWidget(self.ScanInfoRoundStartTime, 1, 2, 1, 2)
-        scan_info_layout.addWidget(self.ScanInfoTimeToNextRound, 2, 2, 1, 4)
+        scan_info_layout.addWidget(self.ScanInfoTimeToNextRound, 3, 0, 1, 4)
         scan_info_layout.addWidget(self.ScanInfoCurrentWell, 2, 0, 1, 4)
         self.ScanInfoWidget.setLayout(scan_info_layout)
         [widget.setHidden(True) if widget.isWidgetType() else False for widget in self.ScanInfoWidget.children() ]
@@ -343,7 +343,7 @@ class DeckScanWidget(NapariHybridWidget):
     def setNImages(self, nRounds):
         nRounds2Do = self.getTimelapseValues()[-1]
         self.ScanInfoNRounds.setHidden(False)
-        self.ScanInfoNRounds.setText(f'Round: {str(nRounds)}/{str(nRounds2Do)}')
+        self.ScanInfoNRounds.setText(f'Rounds done: {str(nRounds)}/{str(nRounds2Do)}')
 
     def update_widget_text(self, widget, text):
         widget.setHidden(False)
