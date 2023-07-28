@@ -320,7 +320,7 @@ class DeckScanController(LiveUpdatedController):
                     raise e
                     # close the controller ina nice way
             else:
-                self.update_time_to_next_round(tperiod, True)
+                self.update_time_to_next_round(tperiod)
             self.positioner.move(value=0, axis="Z", is_blocking=True)
             # pause to not overwhelm the CPU
         time.sleep(0.1)
@@ -480,7 +480,7 @@ class DeckScanController(LiveUpdatedController):
             # Get position to scan
             current_pos = Point(*pos_row.get_absolute_position())
             z_focus = pos_row.relative_focus_z
-            current_pos = current_pos + Point(0, 0, self.z_focus + z_focus - current_pos.z)
+            # current_pos = current_pos + Point(0, 0, self.z_focus + z_focus - current_pos.z)
             # Z-position calculated with z_focus column and self.z_focus
             img_info = ImageInfo(slot=pos_row.slot, well=pos_row.well, labware=pos_row.labware,
                                  offset=pos_row.get_offset(), z_focus=z_focus, pos_abs=current_pos,

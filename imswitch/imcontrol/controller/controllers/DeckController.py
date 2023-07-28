@@ -102,6 +102,8 @@ class DeckController(LiveUpdatedController):
         labware = self.deck_definition.labwares[current_slot].load_name
         if not self.scan_list:  # First positions holds relative zero
             self.relative_focal_plane = current_position[2]
+        elif self.relative_focal_plane is None:
+            self.relative_focal_plane = self.scan_list[0].position_z
         z_focus = current_position[2] - self.relative_focal_plane
         return ScanPoint(labware=labware, slot=int(current_slot), well=current_well,
                          position_x=current_position[0], position_y=current_position[1],
@@ -179,6 +181,7 @@ class DeckController(LiveUpdatedController):
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
+        self.update_beacons_index()
         self.update_list_in_widget()
         self._widget.scan_list_actions_info.setText("Unsaved changes.")
         self._widget.scan_list_actions_info.setHidden(False)
@@ -285,8 +288,6 @@ class DeckController(LiveUpdatedController):
             self.relative_focal_plane = self.positioner.get_position()
         else:
             old_relative_focal_plane = self.scan_list[0].position_z
-            if old_relative_focal_plane != self.relative_focal_plane:
-                raise (f"Error: mismatch in relative focus position.")
             _, _, self.relative_focal_plane = self.positioner.get_position()
             for i_row, values in enumerate(self.scan_list):
                 self.scan_list[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
