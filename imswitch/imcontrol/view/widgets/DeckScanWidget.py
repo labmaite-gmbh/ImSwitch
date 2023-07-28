@@ -215,7 +215,7 @@ class DeckScanWidget(NapariHybridWidget):
         scan_list_actions_layout = QtWidgets.QGridLayout()
         self.ScanListActionsWidget = QtWidgets.QGroupBox("Scan List Actions")
         self.scan_list_actions_info = QtWidgets.QLabel("")
-        self.scan_list_actions_info.setFixedHeight(20)
+        self.scan_list_actions_info.setMaximumWidth(40)
         self.scan_list_actions_info.setHidden(True)
         self.ScanStartButton = guitools.BetterPushButton('Start')
         self.ScanStartButton.setStyleSheet("background-color: black; font-size: 14px")
@@ -233,7 +233,7 @@ class DeckScanWidget(NapariHybridWidget):
         self.ScanShowLastButton.setCheckable(False)
         self.ScanShowLastButton.toggled.connect(self.sigScanShowLast)
         self.ScanInfoStartTime = QtWidgets.QLabel('')
-        self.ScanInfoStartTime.setFixedHeight(20)
+        self.ScanInfoStartTime.setMaximumHeight(35)
 
         scan_list_actions_layout.addWidget(self.ScanInfoStartTime, 2, 0, 1, 3)
 

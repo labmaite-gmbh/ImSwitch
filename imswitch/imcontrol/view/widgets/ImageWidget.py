@@ -17,7 +17,9 @@ class ImageWidget(QtWidgets.QWidget):
             self.napariViewer
         )
         self.NapariResetViewWidget = naparitools.NapariResetViewWidget.addToViewer(self.napariViewer, "right")
+        self.NapariResetViewWidget.setHidden(True)
         self.NapariShiftWidget = naparitools.NapariShiftWidget.addToViewer(self.napariViewer, "right")
+        self.NapariShiftWidget.setHidden(True)
         self.imgLayers = {}
 
         self.viewCtrlLayout = QtWidgets.QVBoxLayout()

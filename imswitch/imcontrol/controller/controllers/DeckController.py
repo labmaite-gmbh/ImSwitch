@@ -68,7 +68,7 @@ class DeckController(LiveUpdatedController):
             dx, dy = int(self._widget.beacons_dx.text()), int(self._widget.beacons_dy.text())
             x, y, _ = self.deck_definition.get_well_position(slot=self.selected_slot, well=self.selected_well)
             _, _, z = Point(*self.positioner.get_position())
-            x, y, z = self.translate_position(Point(x, y, z))  # Positioner value
+            x, y, _ = self.translate_position(Point(x, y, 0))  # Positioner value
             xx, yy = [dx * (i - (nx - 1) / 2) for i in range(nx)], [dy * (i - (ny - 1) / 2) for i in range(ny)]
             for xi, yi in product(xx, yy):
                 point_to_scan = self.parse_position(Point(x=xi + x, y=yi + y, z=z))
