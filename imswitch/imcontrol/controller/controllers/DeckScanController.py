@@ -86,7 +86,7 @@ class DeckScanController(LiveUpdatedController):
         self.zStackEnabled = False
         self.zStackMax = 0
         self.zStackStep = 0
-        self.pixelsize = (10, 1, 1)  # zxy
+        self.pixelsize = (1, 1, 1)  # zxy
         # connect XY Stagescanning live update  https://github.com/napari/napari/issues/1110
         # autofocus related
         self.isAutofocusRunning = False
@@ -269,6 +269,7 @@ class DeckScanController(LiveUpdatedController):
                 self.isScanrunning = False
                 self._logger.debug("Done with timelapse.")
                 self._widget.show_info("Done with timelapse.")
+                self._widget.update_widget_text(self._widget.ScanInfoTimeToNextRound,"")
                 self._widget.ScanStartButton.setEnabled(True)
                 break
             # initialize a run
@@ -279,7 +280,7 @@ class DeckScanController(LiveUpdatedController):
                 self._widget.ScanInfoStartTime.setText(
                     f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
                 self._widget.update_widget_text(self._widget.ScanInfoRoundStartTime,
-                                f"Round {self.nRounds+1} strated at {datetime.fromtimestamp(self.timeLast).strftime('%H:%M (%d.%m.%Y)')}")
+                                f"Round {self.nRounds+1} started at {datetime.fromtimestamp(self.timeLast).strftime('%H:%M (%d.%m)')}")
 
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
@@ -457,7 +458,7 @@ class DeckScanController(LiveUpdatedController):
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         # mFilename = f"{self.experiment_name}_{filename}_{self.nRounds}.{extension}"
         mFilename = f"{self.experiment_name}_{filename}.{extension}"
-        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date)
+        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date+self.experiment_name)
         newPath = os.path.join(dirPath, mFilename)
         if not os.path.exists(dirPath):
             os.makedirs(dirPath)

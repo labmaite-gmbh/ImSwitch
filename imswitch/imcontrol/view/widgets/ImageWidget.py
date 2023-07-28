@@ -16,8 +16,8 @@ class ImageWidget(QtWidgets.QWidget):
         self.updateLevelsWidget = naparitools.NapariUpdateLevelsWidget.addToViewer(
             self.napariViewer
         )
-        # self.NapariResetViewWidget = naparitools.NapariResetViewWidget.addToViewer(self.napariViewer, "right")
-        # self.NapariShiftWidget = naparitools.NapariShiftWidget.addToViewer(self.napariViewer, "right")
+        self.NapariResetViewWidget = naparitools.NapariResetViewWidget.addToViewer(self.napariViewer, "right")
+        self.NapariShiftWidget = naparitools.NapariShiftWidget.addToViewer(self.napariViewer, "right")
         self.imgLayers = {}
 
         self.viewCtrlLayout = QtWidgets.QVBoxLayout()
