@@ -67,8 +67,7 @@ class ImageController(LiveUpdatedController):
             if not init:
                 self.autoLevels([detectorName], im)
 
-            self._widget.setImage(detectorName, im, scale)
-
+            self._widget.setImage(detectorName, im, scale) # TODO: Fix this hardcode...
             if not init or self._shouldResetView:
                 self.adjustFrame(instantResetView=True)
 
@@ -101,6 +100,7 @@ class ImageController(LiveUpdatedController):
 
     def memorySnapAvailable(self, name, image, _, __):
         """ Adds captured image to widget. """
+        # TODO: needs to get the same scale as the Liveview
         self._widget.addStaticLayer(name, image)
         if self._shouldResetView:
             self.adjustFrame(image.shape, instantResetView=True)

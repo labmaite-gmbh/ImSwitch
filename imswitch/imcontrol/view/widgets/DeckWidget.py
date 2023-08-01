@@ -239,12 +239,14 @@ class DeckWidget(Widget):
                 layout.addWidget(self.pars['SpeedEdit' + parNameSuffix], self.numPositioners, 10)
 
             if hasHome:
-                self.pars['Home' + parNameSuffix] = guitools.BetterPushButton('Home')
-                layout.addWidget(self.pars['Home' + parNameSuffix], self.numPositioners, 11)
+                if axis != "Z": # Avoid Z axis Home!
+                    self.pars['Home' + parNameSuffix] = guitools.BetterPushButton('Home')
+                    layout.addWidget(self.pars['Home' + parNameSuffix], self.numPositioners, 11)
 
-                self.pars['Home' + parNameSuffix].clicked.connect(
-                    lambda *args, axis=axis: self.sigHomeAxisClicked.emit(positionerName, axis)
-                )
+                    self.pars['Home' + parNameSuffix].clicked.connect(
+                        lambda *args, axis=axis: self.sigHomeAxisClicked.emit(positionerName, axis)
+                    )
+
 
             if hasStop:
                 self.pars['Stop' + parNameSuffix] = guitools.BetterPushButton('Stop')

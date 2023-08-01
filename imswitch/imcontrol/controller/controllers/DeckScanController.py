@@ -86,7 +86,7 @@ class DeckScanController(LiveUpdatedController):
         self.zStackEnabled = False
         self.zStackMax = 0
         self.zStackStep = 0
-        self.pixelsize = (1, 1, 1)  # zxy
+        self.pixelsize = (1, 0.18115, 0.18115)  # zxy
         # connect XY Stagescanning live update  https://github.com/napari/napari/issues/1110
         # autofocus related
         self.isAutofocusRunning = False
@@ -158,12 +158,12 @@ class DeckScanController(LiveUpdatedController):
     def displayImage(self):
         # a bit weird, but we cannot update outside the main thread
         name = "Last Frame"
-        self._widget.setImage(self.detector.getLatestFrame(), colormap="gray", name=name, pixelsize=(1, 1),
+        self._widget.setImage(self.detector.getLatestFrame(), colormap="gray", name=name, pixelsize=self.pixelsize[1:],
                               translation=(0, 0))
 
     def displayStack(self, im):
         """ Displays the image in the view. """
-        self._widget.setImage(im)
+        self._widget.setImage(im, pixelsize=self.pixelsize)
 
     def cleanStack(self, input):
         try:
@@ -501,7 +501,7 @@ class DeckScanController(LiveUpdatedController):
             else:
                 frame = self.take_single_image_at_position(current_pos, intensity)
                 self.save_image(frame, img_info)
-                self.LastStackLED = (frame.copy())
+                self.LastStackLED.append(frame.copy())
                 self.sigImageReceived.emit()  # => displays image
                 time.sleep(self.tUnshake * 2)  # Time to see image
 

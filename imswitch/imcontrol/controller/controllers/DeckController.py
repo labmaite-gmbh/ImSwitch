@@ -241,7 +241,8 @@ class DeckController(LiveUpdatedController):
                 if hasSpeed:
                     self.setSharedAttr(axis, _speedAttr, pManager.speed[axis])
                 if hasHome:
-                    self.setSharedAttr(axis, _homeAttr, pManager.home[axis])
+                    if axis != "Z": # Z-axis doesn´t have Home
+                        self.setSharedAttr(axis, _homeAttr, pManager.home[axis])
                 if hasStop:
                     self.setSharedAttr(axis, _stopAttr, pManager.stop[axis])
         # Connect CommunicationChannel signals
@@ -260,8 +261,9 @@ class DeckController(LiveUpdatedController):
         self._master.positionersManager[positionerName].forceStop(axis)
 
     def homeAxis(self, positionerName, axis):
-        self.__logger.debug(f"Homing axis {axis}")
-        self._master.positionersManager[positionerName].doHome(axis)
+        if axis!="Z":
+            self.__logger.debug(f"Homing axis {axis}")
+            self._master.positionersManager[positionerName].doHome(axis)
 
     def closeEvent(self):
         self._master.positionersManager.execOnAll(
