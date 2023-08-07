@@ -50,7 +50,6 @@ class ImageInfo:
     timestamp: str
 
     def get_filename(self):
-        # TODO: fix hardcode in self.position_idx
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         if self.slot is None:
             return f"{self.well}_{self.position_in_well_index}_z{round(self.z_focus)}_{self.illu_mode}_{self.timestamp}"
@@ -458,7 +457,7 @@ class DeckScanController(LiveUpdatedController):
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         # mFilename = f"{self.experiment_name}_{filename}_{self.nRounds}.{extension}"
         mFilename = f"{self.experiment_name}_{filename}.{extension}"
-        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date+self.experiment_name)
+        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date+"_"+self.experiment_name)
         newPath = os.path.join(dirPath, mFilename)
         if not os.path.exists(dirPath):
             os.makedirs(dirPath)
