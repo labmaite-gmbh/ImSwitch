@@ -74,7 +74,7 @@ class LEDMatrixWidget(Widget):
         self.slider.setTickInterval(5)
         self.slider.setSingleStep(5)
         self.slider.setValue(0)
-        gridLayout.addWidget(self.slider, nLedsY, 0, 1, nLedsX+1)
+        gridLayout.addWidget(self.slider, nLedsX+1, 0, 1, nLedsY+1)
         self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)        # Add button layout to base well layout
         self.setLayout(gridLayout)
