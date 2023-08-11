@@ -187,6 +187,7 @@ class ESP32StageManager(PositionerManager):
 
     def setAxisOrder(self, order=[0,1,2,3]):
         self._motor.setMotorAxisOrder(order=order)
+        self._homeModule.setHomeAxisOrder(order=order)
 
     def enalbeMotors(self, enable=None, enableauto=None):
         """
