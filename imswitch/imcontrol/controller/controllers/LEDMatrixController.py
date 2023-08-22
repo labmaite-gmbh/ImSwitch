@@ -18,8 +18,8 @@ class LEDMatrixController(ImConWidgetController):
         self.__logger = initLogger(self)
 
         # TODO: This must be easier?
-        self.nLedsX = self._master.LEDMatrixsManager._subManagers['ESP32 LEDMatrix'].Nx
-        self.nLedsY = self._master.LEDMatrixsManager._subManagers['ESP32 LEDMatrix'].Ny
+        self.nLedsX = self._master.LEDMatrixsManager._subManagers['ESP32LEDMatrix'].Nx
+        self.nLedsY = self._master.LEDMatrixsManager._subManagers['ESP32LEDMatrix'].Ny
 
         self._ledmatrixMode = ""
 
@@ -36,7 +36,50 @@ class LEDMatrixController(ImConWidgetController):
 
         self._widget.ButtonAllOn.clicked.connect(self.setAllLEDOn)
         self._widget.ButtonAllOff.clicked.connect(self.setAllLEDOff)
+        self._widget.ButtonToggle.clicked.connect(self.togglePattern)
         self._widget.slider.sliderReleased.connect(self.setIntensity)
+
+        self._widget.ButtonInnerRing.clicked.connect(self.toggle_inner_ring)
+        self._widget.ButtonOuterRing.clicked.connect(self.toggle_outer_ring)
+
+        self.current_pattern = self.ledMatrix.getPattern()
+
+    @APIExport()
+    def toggle_inner_ring(self):
+        pattern = self.ledMatrix.getPattern()
+        inner_ring = self.bool_list_to_numpy(self._widget.toggle_inner_ring())
+        if self._widget.ButtonInnerRing.isChecked():
+            # previous_pattern or inner_ring
+            self.ledMatrix.setPattern(pattern=np.logical_or(pattern,inner_ring))
+        else:
+            # previous_pattern nor inner_ring
+            self.ledMatrix.setPattern(pattern=np.logical_and(pattern,np.logical_not(inner_ring)))
+
+    @APIExport()
+    def toggle_outer_ring(self):
+        pattern = self.ledMatrix.getPattern()
+        outer_ring = self.bool_list_to_numpy(self._widget.toggle_outer_ring())
+        if self._widget.ButtonOuterRing.isChecked():
+            # previous_pattern or outer_ring
+            self.ledMatrix.setPattern(pattern=np.logical_or(pattern,outer_ring))
+        else:
+            # previous_pattern nor inner_ring
+            self.ledMatrix.setPattern(pattern=np.logical_and(pattern,np.logical_not(outer_ring)))
+
+    @APIExport()
+    def togglePattern(self):
+        self.current_widget_pattern = self._widget.get_widget_pattern()
+        if self.ledMatrix.getPattern().any():
+            self.ledMatrix.setPattern(pattern=self.current_pattern*0)
+        else:
+            led_pattern = self.get_pattern_from_widget()
+            self.ledMatrix.setPattern(pattern=led_pattern)
+
+    def bool_list_to_numpy(self, led_pattern: List[bool] = None):
+        return np.vstack([[1, 1, 1] if i else [0, 0, 0] for i in led_pattern])
+
+    def get_pattern_from_widget(self):
+        return self.bool_list_to_numpy(self.current_widget_pattern)
 
     @APIExport()
     def setAllLEDOn(self):

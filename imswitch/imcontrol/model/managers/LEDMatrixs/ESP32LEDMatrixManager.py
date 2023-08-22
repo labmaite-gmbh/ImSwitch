@@ -38,6 +38,8 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
        
         # initialize the LEDMatrix device that holds all necessary states^
         self.mLEDmatrix = self._rs232manager._esp32.led
+        self.mLEDmatrix.Nx = self.Nx
+        self.mLEDmatrix.Ny = self.Ny
         self.mLEDmatrix.setLEDArrayConfig(ledArrPin=None, ledArrNum=self.NLeds)
 
         super().__init__(LEDMatrixInfo, name, isBinary=False, valueUnits='mW', valueDecimals=0)
@@ -48,7 +50,7 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
         self.mLEDmatrix.setAll(state, intensity)
 
     def setPattern(self, pattern):
-        self.mLEDmatrix.pattern(pattern)
+        self.mLEDmatrix.setPattern(ledpattern=pattern)
     
     def getPattern(self):
         return self.mLEDmatrix.getPattern()

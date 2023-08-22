@@ -8,8 +8,6 @@ from .basewidgets import Widget
 from imswitch.imcommon.model import initLogger
 
 
-
-
 class LEDMatrixWidget(Widget):
     """ Widget in control of the piezo movement. """
     def __init__(self, *args, **kwargs):
@@ -18,9 +16,9 @@ class LEDMatrixWidget(Widget):
         self.pars = {}
         self.grid = QtWidgets.QGridLayout()
         self.setLayout(self.grid)
-
+        self.current_pattern = None
         self.__logger = initLogger(self, instanceName="LEDMatrixWidget")
-
+    # TODO: remove hardcode with size/Nx,Ny
 
     def add_matrix_view(self, nLedsX = 4, nLedsY=6):
         """Create matrix Layout Interface"""
@@ -31,10 +29,11 @@ class LEDMatrixWidget(Widget):
         gridLayout = self.grid
 
         # Create dictionary to store well names (button texts)
-        buttons = {}
-        for ix in range(nLedsX):
-            for iy in range(nLedsY):
-                buttons[str(nLedsX*iy+ix)]=(ix,iy)
+        buttons = self.get_spiral_pattern_buttons()
+
+        # for ix in range(nLedsX):
+        #     for iy in range(nLedsY):
+        #         buttons[str(nLedsX*iy+ix)]=(ix,iy)
 
         # Create leds (buttons) and add them to the grid layout
         for corrds, pos in buttons.items():
@@ -50,20 +49,29 @@ class LEDMatrixWidget(Widget):
 
         self.ButtonAllOn = guitools.BetterPushButton("All On")
         self.ButtonAllOn.setMaximumSize(25, 50)
-        gridLayout.addWidget(self.ButtonAllOn, 0, nLedsX, 1, 1)
+        gridLayout.addWidget(self.ButtonAllOn, 0, nLedsY, 1, 1)
 
         self.ButtonAllOff = guitools.BetterPushButton("All Off")
         self.ButtonAllOff.setMaximumSize(25, 50)
-        gridLayout.addWidget(self.ButtonAllOff, 1, nLedsX, 1, 1)
+        gridLayout.addWidget(self.ButtonAllOff, 1, nLedsY, 1, 1)
 
         self.ButtonSubmit = guitools.BetterPushButton("Submit")
         self.ButtonSubmit.setMaximumSize(25, 50)
-        gridLayout.addWidget(self.ButtonSubmit, 2, nLedsX, 1, 1)
+        gridLayout.addWidget(self.ButtonSubmit, 2, nLedsY, 1, 1)
 
         self.ButtonToggle = guitools.BetterPushButton("Toggle")
         self.ButtonToggle.setMaximumSize(25, 50)
-        gridLayout.addWidget(self.ButtonToggle, 3, nLedsX, 1, 1)
+        gridLayout.addWidget(self.ButtonToggle, 3, nLedsY, 1, 1)
 
+        self.ButtonInnerRing = guitools.BetterPushButton("Inner")
+        self.ButtonInnerRing.setMaximumSize(25, 50)
+        self.ButtonInnerRing.setCheckable(True)
+        gridLayout.addWidget(self.ButtonInnerRing, 0, nLedsY+1, 1, 1)
+
+        self.ButtonOuterRing = guitools.BetterPushButton("Outer")
+        self.ButtonOuterRing.setMaximumSize(25, 50)
+        self.ButtonOuterRing.setCheckable(True)
+        gridLayout.addWidget(self.ButtonOuterRing, 1, nLedsY+1, 1, 1)
 
         self.slider = guitools.FloatSlider(QtCore.Qt.Horizontal, self, allowScrollChanges=False,
                                            decimals=1)
@@ -74,7 +82,7 @@ class LEDMatrixWidget(Widget):
         self.slider.setTickInterval(5)
         self.slider.setSingleStep(5)
         self.slider.setValue(0)
-        gridLayout.addWidget(self.slider, nLedsX+1, 0, 1, nLedsY+1)
+        gridLayout.addWidget(self.slider, nLedsX, 0, 1, nLedsY+1)
         self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)        # Add button layout to base well layout
         self.setLayout(gridLayout)
@@ -82,8 +90,64 @@ class LEDMatrixWidget(Widget):
     def _getParNameSuffix(self, positionerName, axis):
         return f'{positionerName}--{axis}'
 
+    def get_spiral_pattern_buttons(self):
+        buttons = {}
+        size = 5
+        center = size // 2  # Center of the matrix
+        # Define the order of movements: right, down, left, up
+        movements = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        current_x, current_y = center, center
+        buttons["0"] = (current_x, current_y)
+        num = 1
+        movement_index = 0
+        steps = 1
+        while num < size * size:
+            movement = movements[movement_index % 4]
+            for _ in range(steps):
+                current_x += movement[0]
+                current_y += movement[1]
+                buttons[str(num)] = (current_x, current_y)
+                num += 1
+            if movement_index % 2 == 1:  # Increase steps every two movements
+                steps += 1
+            movement_index += 1
+        first_coord = buttons[str(9)]
+        for num in range(9,size*size):
+            buttons[str(num)] = buttons[str(num+1)]
+        buttons[str(size*size-1)] = first_coord
+        buttons.pop(str(size*size))
+        return buttons
 
-    # Copyright (C) 2020-2021 ImSwitch developers
+    def get_widget_pattern(self):
+        return [i_led.isChecked() for i_led in self.leds.values()]
+
+    def toggle_inner_ring(self):
+        if self.ButtonInnerRing.isChecked():
+            for i_led in list(range(1, 9)):
+                self.leds[str(i_led)].setChecked(True)
+        else:
+            for i_led in list(range(1, 9)):
+                self.leds[str(i_led)].setChecked(False)
+        return self.inner_ring_mask
+
+    def toggle_outer_ring(self):
+        if self.ButtonOuterRing.isChecked():
+            for i_led in list(range(9, 25)):
+                self.leds[str(i_led)].setChecked(True)
+        else:
+            for i_led in list(range(9, 25)):
+                self.leds[str(i_led)].setChecked(False)
+        return self.outer_ring_mask
+
+    @property
+    def inner_ring_mask(self):
+        return [i_led if 1<=i_led<9 else False for i_led in list(range(25))]
+
+    @property
+    def outer_ring_mask(self):
+        return [i_led if 9<=i_led<25 else False for i_led in list(range(25))]
+
+            # Copyright (C) 2020-2021 ImSwitch developers
     # This file is part of ImSwitch.
     #
     # ImSwitch is free software: you can redistribute it and/or modify
