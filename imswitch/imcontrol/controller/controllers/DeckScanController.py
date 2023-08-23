@@ -268,7 +268,7 @@ class DeckScanController(LiveUpdatedController):
                 self.isScanrunning = False
                 self._logger.debug("Done with timelapse.")
                 self._widget.show_info("Done with timelapse.")
-                self._widget.update_widget_text(self._widget.ScanInfoTimeToNextRound,"")
+                self._widget.update_widget_text(self._widget.ScanInfoTimeToNextRound, "")
                 self._widget.ScanStartButton.setEnabled(True)
                 break
             # initialize a run
@@ -279,7 +279,7 @@ class DeckScanController(LiveUpdatedController):
                 self._widget.ScanInfoStartTime.setText(
                     f"Started scan at {self.timeStart.strftime('%H:%M (%d.%m.%Y)')}.")
                 self._widget.update_widget_text(self._widget.ScanInfoRoundStartTime,
-                                f"Round {self.nRounds+1} started at {datetime.fromtimestamp(self.timeLast).strftime('%H:%M (%d.%m)')}")
+                                                f"Round {self.nRounds + 1} started at {datetime.fromtimestamp(self.timeLast).strftime('%H:%M (%d.%m)')}")
 
                 # reserve and free space for displayed stacks
                 self.LastStackLED = []
@@ -299,7 +299,7 @@ class DeckScanController(LiveUpdatedController):
                         timestamp_ = strfdelta(datetime.now() - self.timeStart,
                                                "{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
-                        illu_mode = "Phase Contrast"    # TODO: avoid hardcode
+                        illu_mode = "PhaseContrast"  # TODO: avoid hardcode
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
                         self._widget.show_info("Timelapse progress: ")
                         for pos_id, row_info, frame in self.takeImageIllu(illuMode=illu_mode,
@@ -350,12 +350,8 @@ class DeckScanController(LiveUpdatedController):
             self.leds[0].setValue(intensity)
             self.leds[0].setEnabled(True)
         elif self.led_matrixs:
-            self.led_matrixs[0].setOuterRIng()
+            self.led_matrixs[0].setOuterRIng() # TODO: avoid hardcoded!
             # self.led_matrixs[0].setAll(state=(1, 1, 1))
-            # time.sleep(0.1)
-            # for LEDid in [12, 13, 14]:  # TODO: these LEDs generate artifacts
-            #     self.led_matrixs[0].setLEDSingle(indexled=int(LEDid), state=0)
-            #     time.sleep(0.1)
         time.sleep(self.tUnshake * 3)  # unshake + Light
 
     def switchOffIllumination(self):
@@ -410,20 +406,6 @@ class DeckScanController(LiveUpdatedController):
             scan_item_dict[item] = queue_item[c]
         return ScanPoint(**scan_item_dict)
 
-    # def get_current_scan_row(self):
-    #     queue_item = self.scan_queue.get()
-    #     if queue_item is None:
-    #         self.__logger.debug(f"Queue is empty upon scanning")
-    #         raise ValueError("Queue is empty upon scanning.")
-    #     elif None not in queue_item:
-    #         self.current_scanning_row = queue_item
-    #         self.current_scanning_row[2] = tuple(map(float, queue_item[2].strip('()').split(',')))
-    #         self.current_scanning_row[3] = float(queue_item[3])
-    #         self.current_scanning_row[4] = Point(*tuple(map(float, queue_item[4].strip('()').split(','))))
-    #         return self.current_scanning_row
-    #     else:
-    #         raise ValueError("Get rid of None values in the list before scanning.")
-
     def take_single_image_at_position(self, current_position: Point, intensity):
         self.__logger.info(f"Moving to {current_position}.")
         self.positioner.move(value=current_position, axis="XYZ", is_absolute=True, is_blocking=True)
@@ -437,18 +419,16 @@ class DeckScanController(LiveUpdatedController):
 
     def take_z_stack_at_position(self, current_position: Point, intensity):
         self.positioner.move(value=current_position, axis="XYZ", is_absolute=True, is_blocking=True)
-        time.sleep(self.tUnshake * 3)
-        # for zn, iZ in enumerate(np.arange(self.zStackMin, self.zStackMax, self.zStackStep)):
+        time.sleep(self.tUnshake * 2)
+        # Lights stay on during Z-stack. Ideally it shouldn't, but we don't care so much about phototoxicity with brightfield
+        self.switchOnIllumination(intensity)
         # Array of displacements from center point (z_focus) -/+ z_depth/2
-        self.switchOnIllumination(
-            intensity)  # Lights stay on during Z-stack. Ideally it shouldn't, but we don't care so much about phototoxicity with brightfield
         for zn, iZ in enumerate(np.linspace(-self.zStackDepth / 2 + current_position.z,
                                             self.zStackDepth / 2 + current_position.z, int(self.zStackStep))):
             self.__logger.info(f"Z-stack : {iZ}")
             # move to each position
             self.positioner.move(value=iZ, axis="Z", is_absolute=True, is_blocking=True)  # , is_absolute=False
             time.sleep(self.tUnshake)  # unshake + Light
-            # self.switchOnIllumination(intensity)
             last_frame = self.detector.getLatestFrame()
 
             yield iZ, last_frame
@@ -458,7 +438,7 @@ class DeckScanController(LiveUpdatedController):
         # <Experiment name>_<Slot>_<Well>_<Image in Well Index+Z>_<Channel>_<Channel Index>_<00dd00hh00mm>
         # mFilename = f"{self.experiment_name}_{filename}_{self.nRounds}.{extension}"
         mFilename = f"{self.experiment_name}_{filename}.{extension}"
-        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date+"_"+self.experiment_name)
+        dirPath = os.path.join(dirtools.UserFileDirs.Root, 'recordings', date + "_" + self.experiment_name)
         newPath = os.path.join(dirPath, mFilename)
         if not os.path.exists(dirPath):
             os.makedirs(dirPath)
@@ -495,7 +475,7 @@ class DeckScanController(LiveUpdatedController):
                         self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
                     img_info.z_focus = z_index
                     self.save_image(frame, img_info)
-                    if img_info.illu_mode == "Brightfield" or "Phase Contrast":  # store frames for displaying
+                    if img_info.illu_mode == "Brightfield" or "PhaseContrast":  # store frames for displaying
                         self.LastStackLED.append(frame.copy())
                     self.sigImageReceived.emit()  # => displays image
             else:
