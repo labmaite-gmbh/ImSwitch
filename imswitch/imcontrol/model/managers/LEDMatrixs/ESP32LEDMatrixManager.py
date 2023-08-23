@@ -1,6 +1,7 @@
 from imswitch.imcommon.model import initLogger
 from .LEDMatrixManager import LEDMatrixManager
 import numpy as np
+from typing import Dict, List
 
 import uc2rest
 
@@ -58,7 +59,7 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
     def setEnabled(self, enabled):
         """Turn on (N) or off (F) LEDMatrix emission"""
         self.setEnabled = enabled
-        
+
     def setLEDSingle(self, indexled=0, state=(0,0,0)):
         """Handles output power.
         Sends a RS232 command to the LEDMatrix specifying the new intensity.
@@ -68,7 +69,26 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
     def setLEDIntensity(self, intensity=(0,0,0)):
         self.mLEDmatrix.setIntensity(intensity)
 
+    @property
+    def inner_ring_mask(self):
+        return [i_led if 1<=i_led<9 else False for i_led in list(range(25))]
 
+    @property
+    def outer_ring_mask(self):
+        return [i_led if 9<=i_led<25 else False for i_led in list(range(25))]
+
+    def bool_list_to_numpy(self, led_pattern: List[bool] = None):
+        return np.vstack([[1, 1, 1] if i else [0, 0, 0] for i in led_pattern])
+
+    def setInnerRIng(self):
+        pattern = self.mLEDmatrix.getPattern()
+        inner_ring = self.bool_list_to_numpy(self.inner_ring_mask)
+        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,inner_ring))
+
+    def setOuterRIng(self):
+        pattern = self.mLEDmatrix.getPattern()
+        outer_ring = self.bool_list_to_numpy(self.outer_ring_mask)
+        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,outer_ring))
 
 # Copyright (C) 2020-2021 ImSwitch developers
 # This file is part of ImSwitch.

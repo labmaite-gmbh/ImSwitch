@@ -299,7 +299,7 @@ class DeckScanController(LiveUpdatedController):
                         timestamp_ = strfdelta(datetime.now() - self.timeStart,
                                                "{days}dd{hours}hh{minutes}mm")
                         self.z_focus = float(self._widget.autofocusInitial.text())
-                        illu_mode = "Brightfield"
+                        illu_mode = "Phase Contrast"    # TODO: avoid hardcode
                         self._logger.debug("Take images in " + illu_mode + ": " + str(self.LEDValue) + " A")
                         self._widget.show_info("Timelapse progress: ")
                         for pos_id, row_info, frame in self.takeImageIllu(illuMode=illu_mode,
@@ -350,7 +350,8 @@ class DeckScanController(LiveUpdatedController):
             self.leds[0].setValue(intensity)
             self.leds[0].setEnabled(True)
         elif self.led_matrixs:
-            self.led_matrixs[0].setAll(state=(1, 1, 1))
+            self.led_matrixs[0].setOuterRIng()
+            # self.led_matrixs[0].setAll(state=(1, 1, 1))
             # time.sleep(0.1)
             # for LEDid in [12, 13, 14]:  # TODO: these LEDs generate artifacts
             #     self.led_matrixs[0].setLEDSingle(indexled=int(LEDid), state=0)
@@ -494,7 +495,7 @@ class DeckScanController(LiveUpdatedController):
                         self.take_z_stack_at_position(current_pos, intensity)):  # Will yield image and iZ
                     img_info.z_focus = z_index
                     self.save_image(frame, img_info)
-                    if img_info.illu_mode == "Brightfield":  # store frames for displaying
+                    if img_info.illu_mode == "Brightfield" or "Phase Contrast":  # store frames for displaying
                         self.LastStackLED.append(frame.copy())
                     self.sigImageReceived.emit()  # => displays image
             else:
