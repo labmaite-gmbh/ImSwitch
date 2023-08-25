@@ -350,7 +350,7 @@ class DeckScanController(LiveUpdatedController):
             self.leds[0].setValue(intensity)
             self.leds[0].setEnabled(True)
         elif self.led_matrixs:
-            self.led_matrixs[0].setOuterRIng() # TODO: avoid hardcoded!
+            self.led_matrixs[0].setOuterRIng(color = (0,1,1)) # TODO: avoid hardcoded! Check why itis not changing in LEDMatrixManager
             # self.led_matrixs[0].setAll(state=(1, 1, 1))
         time.sleep(self.tUnshake * 3)  # unshake + Light
 

@@ -23,6 +23,7 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
         self.I_max = 255
         self.setEnabled = False
         self.intensity=0
+        self.color = (1.0, 1.0, 1.0) # White by default
 
         try:
             self.Nx = LEDMatrixInfo.managerProperties['Nx']
@@ -45,9 +46,20 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
 
         super().__init__(LEDMatrixInfo, name, isBinary=False, valueUnits='mW', valueDecimals=0)
 
+    @property
+    def color(self):
+        return self._color
+
+    @color.setter
+    def color(self, value: tuple):
+        self._color = value
+
     def setAll(self, state=(0,0,0), intensity=None):
         # dealing with on or off,
         # intensity is adjjusting the global value
+        if state is not None:
+            state = tuple([a*b for a,b in zip(self.color, state)])
+            print(state)
         self.mLEDmatrix.setAll(state, intensity)
 
     def setPattern(self, pattern):
@@ -55,6 +67,9 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
     
     def getPattern(self):
         return self.mLEDmatrix.getPattern()
+
+    def getLEDSingle(self, index):
+        return self.mLEDmatrix.getPattern()[index]
 
     def setEnabled(self, enabled):
         """Turn on (N) or off (F) LEDMatrix emission"""
@@ -80,15 +95,21 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
     def bool_list_to_numpy(self, led_pattern: List[bool] = None):
         return np.vstack([[1, 1, 1] if i else [0, 0, 0] for i in led_pattern])
 
-    def setInnerRIng(self):
+    def setInnerRIng(self, color = None):
         pattern = self.mLEDmatrix.getPattern()
         inner_ring = self.bool_list_to_numpy(self.inner_ring_mask)
-        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,inner_ring))
+        if color is None:
+            color = self.color
+        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,inner_ring)*color)
+        print(f"Color {self.color}")
 
-    def setOuterRIng(self):
+    def setOuterRIng(self, color = None):
         pattern = self.mLEDmatrix.getPattern()
         outer_ring = self.bool_list_to_numpy(self.outer_ring_mask)
-        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,outer_ring))
+        if color is None:
+            color = self.color
+        self.mLEDmatrix.setPattern(ledpattern=np.logical_or(pattern,outer_ring)*color)
+        print(f"Color {self.color}")
 
 # Copyright (C) 2020-2021 ImSwitch developers
 # This file is part of ImSwitch.

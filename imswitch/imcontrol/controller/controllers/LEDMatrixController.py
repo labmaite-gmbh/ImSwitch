@@ -42,7 +42,16 @@ class LEDMatrixController(ImConWidgetController):
         self._widget.ButtonInnerRing.clicked.connect(self.toggle_inner_ring)
         self._widget.ButtonOuterRing.clicked.connect(self.toggle_outer_ring)
 
+        self._widget.ButtonColorDialog.clicked.connect(self.get_color)
         self.current_pattern = self.ledMatrix.getPattern()
+
+        self.selected_color = (1.0, 1.0, 1.0) # White by default
+        self._master.LEDMatrixsManager._subManagers['ESP32LEDMatrix'].color = self.selected_color
+
+    def get_color(self):
+        self.selected_color = self._widget.get_rgb_from_dialog()
+        self._master.LEDMatrixsManager._subManagers['ESP32LEDMatrix'].color = self.selected_color
+        return self.selected_color
 
     @APIExport()
     def toggle_inner_ring(self):
@@ -50,10 +59,10 @@ class LEDMatrixController(ImConWidgetController):
         inner_ring = self.bool_list_to_numpy(self._widget.toggle_inner_ring())
         if self._widget.ButtonInnerRing.isChecked():
             # previous_pattern or inner_ring
-            self.ledMatrix.setPattern(pattern=np.logical_or(pattern,inner_ring))
+            self.ledMatrix.setPattern(pattern=self.selected_color*np.logical_or(pattern,inner_ring))
         else:
             # previous_pattern nor inner_ring
-            self.ledMatrix.setPattern(pattern=np.logical_and(pattern,np.logical_not(inner_ring)))
+            self.ledMatrix.setPattern(pattern=self.selected_color*np.logical_and(pattern,np.logical_not(inner_ring)))
 
     @APIExport()
     def toggle_outer_ring(self):
@@ -61,10 +70,10 @@ class LEDMatrixController(ImConWidgetController):
         outer_ring = self.bool_list_to_numpy(self._widget.toggle_outer_ring())
         if self._widget.ButtonOuterRing.isChecked():
             # previous_pattern or outer_ring
-            self.ledMatrix.setPattern(pattern=np.logical_or(pattern,outer_ring))
+            self.ledMatrix.setPattern(pattern=self.selected_color*np.logical_or(pattern,outer_ring))
         else:
             # previous_pattern nor inner_ring
-            self.ledMatrix.setPattern(pattern=np.logical_and(pattern,np.logical_not(outer_ring)))
+            self.ledMatrix.setPattern(pattern=self.selected_color*np.logical_and(pattern,np.logical_not(outer_ring)))
 
     @APIExport()
     def togglePattern(self):
@@ -73,7 +82,7 @@ class LEDMatrixController(ImConWidgetController):
             self.ledMatrix.setPattern(pattern=self.current_pattern*0)
         else:
             led_pattern = self.get_pattern_from_widget()
-            self.ledMatrix.setPattern(pattern=led_pattern)
+            self.ledMatrix.setPattern(pattern=self.selected_color*led_pattern)
 
     def bool_list_to_numpy(self, led_pattern: List[bool] = None):
         return np.vstack([[1, 1, 1] if i else [0, 0, 0] for i in led_pattern])
@@ -83,7 +92,8 @@ class LEDMatrixController(ImConWidgetController):
 
     @APIExport()
     def setAllLEDOn(self):
-        self.setAllLED(state=(1,1,1))
+        state =  tuple([a*b for a,b in zip(self.selected_color, (1,1,1))])
+        self.setAllLED(state=state)
 
     @APIExport()
     def setAllLEDOff(self):
@@ -93,7 +103,7 @@ class LEDMatrixController(ImConWidgetController):
     def setAllLED(self, state=None, intensity=None):
         if intensity is not None:
             self.setIntensity(intensity=intensity)
-        self.ledMatrix.setAll(state=state)
+        self.ledMatrix.setAll(state=state, intensity=intensity)
         for coords, btn in self._widget.leds.items():
             if isinstance(btn, guitools.BetterPushButton):
                 btn.setChecked(np.sum(state)>0)
@@ -105,8 +115,10 @@ class LEDMatrixController(ImConWidgetController):
         else:
             # this is only if the GUI/API is calling this function
             intensity = int(intensity)
+        print(f"Color {self.selected_color}")
+        intensity = tuple([a * intensity for a in self.selected_color])
 
-        self.ledMatrix.setLEDIntensity(intensity=(intensity,intensity,intensity))
+        self.ledMatrix.setLEDIntensity(intensity=intensity)
 
     @APIExport()
     def setLED(self, LEDid, state=None):

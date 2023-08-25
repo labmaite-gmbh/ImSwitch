@@ -43,35 +43,41 @@ class LEDMatrixWidget(Widget):
             self.leds[corrds].setCheckable(True)
             self.leds[corrds].setStyleSheet("""background-color: grey;
                                             font-size: 15px""")
-            self.leds[corrds].setMaximumSize(25,25)
+            self.leds[corrds].setMaximumHeight(25)
+            self.leds[corrds].setMaximumWidth(25)
             # Add button/label to layout
             gridLayout.addWidget(self.leds[corrds], pos[0], pos[1])
 
         self.ButtonAllOn = guitools.BetterPushButton("All On")
-        self.ButtonAllOn.setMaximumSize(25, 50)
+        self.ButtonAllOn.setMaximumHeight(25)
         gridLayout.addWidget(self.ButtonAllOn, 0, nLedsY, 1, 1)
 
         self.ButtonAllOff = guitools.BetterPushButton("All Off")
-        self.ButtonAllOff.setMaximumSize(25, 50)
+        self.ButtonAllOff.setMaximumHeight(25)
         gridLayout.addWidget(self.ButtonAllOff, 1, nLedsY, 1, 1)
 
         self.ButtonSubmit = guitools.BetterPushButton("Submit")
-        self.ButtonSubmit.setMaximumSize(25, 50)
+        self.ButtonSubmit.setMaximumHeight(25)
         gridLayout.addWidget(self.ButtonSubmit, 2, nLedsY, 1, 1)
 
         self.ButtonToggle = guitools.BetterPushButton("Toggle")
-        self.ButtonToggle.setMaximumSize(25, 50)
+        self.ButtonToggle.setMaximumHeight(25)
         gridLayout.addWidget(self.ButtonToggle, 3, nLedsY, 1, 1)
 
         self.ButtonInnerRing = guitools.BetterPushButton("Inner")
-        self.ButtonInnerRing.setMaximumSize(25, 50)
+        self.ButtonInnerRing.setMaximumHeight(25)
         self.ButtonInnerRing.setCheckable(True)
         gridLayout.addWidget(self.ButtonInnerRing, 0, nLedsY+1, 1, 1)
 
         self.ButtonOuterRing = guitools.BetterPushButton("Outer")
-        self.ButtonOuterRing.setMaximumSize(25, 50)
+        self.ButtonOuterRing.setMaximumHeight(25)
         self.ButtonOuterRing.setCheckable(True)
         gridLayout.addWidget(self.ButtonOuterRing, 1, nLedsY+1, 1, 1)
+
+        self.ButtonColorDialog = guitools.BetterPushButton("Select color")
+        gridLayout.addWidget(self.ButtonColorDialog, 2, nLedsY+1, 1, 1)
+        self.ColorLabelRGBValue = QtWidgets.QLabel("")
+        gridLayout.addWidget(self.ColorLabelRGBValue, 3, nLedsY+1, 1, 1)
 
         self.slider = guitools.FloatSlider(QtCore.Qt.Horizontal, self, allowScrollChanges=False,
                                            decimals=1)
@@ -86,6 +92,12 @@ class LEDMatrixWidget(Widget):
         self.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)        # Add button layout to base well layout
         self.setLayout(gridLayout)
+
+    def get_rgb_from_dialog(self):
+        self.SelectedColor =  ColorDialog().getColor()
+        r,g,b = self.SelectedColor.redF(), self.SelectedColor.greenF(), self.SelectedColor.blueF()
+        self.ColorLabelRGBValue.setText(f"R: {r:.3f}, G: {g:.3f}, B: {b:.3f}")
+        return (r,g,b)
 
     def _getParNameSuffix(self, positionerName, axis):
         return f'{positionerName}--{axis}'
@@ -146,6 +158,16 @@ class LEDMatrixWidget(Widget):
     @property
     def outer_ring_mask(self):
         return [i_led if 9<=i_led<25 else False for i_led in list(range(25))]
+
+class ColorDialog(QtWidgets.QColorDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setOptions(self.options() | QtWidgets.QColorDialog.DontUseNativeDialog)
+
+        # for children in self.findChildren(QtWidgets.QWidget):
+        #     classname = children.metaObject().className()
+        #     if classname not in ("QColorPicker","QSpinBox", "QColorLuminancePicker", "QColorShowLabel", "QColorShower", "QLabel"):
+        #         children.hide()
 
             # Copyright (C) 2020-2021 ImSwitch developers
     # This file is part of ImSwitch.

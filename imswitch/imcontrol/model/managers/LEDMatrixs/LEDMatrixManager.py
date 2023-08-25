@@ -54,7 +54,9 @@ class LEDMatrixManager(ABC):
     def setLEDSingle(self, index=0, intensity=0) -> None:
         """ Sets the value of the LEDMatrix. """
         pass
-    
+
+    def getLEDSingle(self, index):
+        pass
 
 
 
