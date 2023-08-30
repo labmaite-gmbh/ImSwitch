@@ -32,8 +32,10 @@ class PositionerWidget(Widget):
             self.pars['Position' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
             self.pars['UpButton' + parNameSuffix] = guitools.BetterPushButton('+')
             self.pars['DownButton' + parNameSuffix] = guitools.BetterPushButton('-')
-            self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('1000')
-
+            if axis == "Z":
+                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('100')
+            else:
+                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('500')
             self.pars['AbsolutePosEdit' + parNameSuffix] = QtWidgets.QLineEdit('0')
             self.pars['AbsolutePosButton' + parNameSuffix] = guitools.BetterPushButton('Go!')
 

@@ -96,7 +96,7 @@ class LEDMatrixWidget(Widget):
     def get_rgb_from_dialog(self):
         self.SelectedColor =  ColorDialog().getColor()
         r,g,b = self.SelectedColor.redF(), self.SelectedColor.greenF(), self.SelectedColor.blueF()
-        self.ColorLabelRGBValue.setText(f"R: {r:.3f}, G: {g:.3f}, B: {b:.3f}")
+        self.ColorLabelRGBValue.setText(f"R: {r:.2f}, G: {g:.2f}, B: {b:.2f}")
         return (r,g,b)
 
     def _getParNameSuffix(self, positionerName, axis):
@@ -143,12 +143,15 @@ class LEDMatrixWidget(Widget):
         return self.inner_ring_mask
 
     def toggle_outer_ring(self):
+        glare_leds = [15]
         if self.ButtonOuterRing.isChecked():
             for i_led in list(range(9, 25)):
-                self.leds[str(i_led)].setChecked(True)
+                if i_led not in glare_leds:
+                    self.leds[str(i_led)].setChecked(True)
         else:
             for i_led in list(range(9, 25)):
-                self.leds[str(i_led)].setChecked(False)
+                if i_led not in glare_leds:
+                    self.leds[str(i_led)].setChecked(False)
         return self.outer_ring_mask
 
     @property
@@ -157,7 +160,9 @@ class LEDMatrixWidget(Widget):
 
     @property
     def outer_ring_mask(self):
-        return [i_led if 9<=i_led<25 else False for i_led in list(range(25))]
+        glare_leds = [15]
+        return [i_led if (9<=i_led<25 and i_led not in glare_leds) else False for i_led in list(range(25))]
+
 
 class ColorDialog(QtWidgets.QColorDialog):
     def __init__(self, parent=None):

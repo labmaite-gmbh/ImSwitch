@@ -130,9 +130,9 @@ class DeckWidget(Widget):
         self.home = guitools.BetterPushButton(text="HOME")  # QtWidgets.QPushButton(corrds)
         self.home.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                 QtWidgets.QSizePolicy.Expanding)
-        self.home.setMinimumWidth(120)
-        self.home.setMinimumHeight(40)
-        self.home.setMaximumHeight(60)
+        self.home.setMinimumWidth(50)
+        self.home.setMinimumHeight(50)
+        self.home.setMaximumHeight(100)
         self.home.setStyleSheet("background-color: black; font-size: 14px")
         layout.addWidget(self.home)
 
@@ -142,9 +142,9 @@ class DeckWidget(Widget):
         self.zero = guitools.BetterPushButton(text="ZERO\nZ-AXIS")  # QtWidgets.QPushButton(corrds)
         self.zero.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                 QtWidgets.QSizePolicy.Expanding)
-        self.zero.setMinimumWidth(120)
-        self.zero.setMinimumHeight(40)
-        self.zero.setMaximumHeight(60)
+        self.zero.setMinimumWidth(50)
+        self.zero.setMinimumHeight(50)
+        self.zero.setMaximumHeight(100)
         # self.zero.setStyleSheet("background-color: black; font-size: 14px")
         self.zero.setStyleSheet("background-color: white; color: black; font-size: 14px")
         layout.addWidget(self.zero)
@@ -214,7 +214,10 @@ class DeckWidget(Widget):
             self.pars['Position' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
             self.pars['UpButton' + parNameSuffix] = guitools.BetterPushButton('+')
             self.pars['DownButton' + parNameSuffix] = guitools.BetterPushButton('-')
-            self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('1000')
+            if axis == "Z":
+                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('100')
+            else:
+                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('500')
 
             self.pars['AbsolutePosEdit' + parNameSuffix] = QtWidgets.QLineEdit('0')
             self.pars['AbsolutePosButton' + parNameSuffix] = guitools.BetterPushButton('Go!')

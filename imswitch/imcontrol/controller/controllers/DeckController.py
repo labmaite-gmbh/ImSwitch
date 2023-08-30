@@ -201,6 +201,8 @@ class DeckController(LiveUpdatedController):
             self.__logger.debug(f"Adjusting focus: changing relative focal plane. {z_old} um->{z_new} um")
         else:
             z_old = self.scan_list[row].position_z
+            if self.relative_focal_plane is None:
+                self.relative_focal_plane = self.scan_list[0].position_z
             self.scan_list[row].position_z = z_new
             self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
             self.__logger.debug(f"Adjusting focus: Row {row} - {z_old} um->{z_new} um")
