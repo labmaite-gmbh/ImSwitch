@@ -21,6 +21,7 @@ class DeckWidget(Widget):
     sigStopAxisClicked = QtCore.Signal(str, str)
 
     sigZeroZAxisClicked = QtCore.Signal(float)
+    sigDropEvent = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -579,10 +580,10 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             menu = QtWidgets.QMenu()
             goto_action = menu.addAction("Go To") if self.isSignalConnected(
                 self.getSignal(self, "sigGoToTableClicked")) else None
-            delete_action = menu.addAction("Delete") if self.isSignalConnected(
-                self.getSignal(self, "sigDeleteRowClicked")) else None
             adjust_focus_action = menu.addAction("Adjust Focus") if self.isSignalConnected(
                 self.getSignal(self, "sigAdjustFocusClicked")) else None
+            delete_action = menu.addAction("Delete") if self.isSignalConnected(
+                self.getSignal(self, "sigDeleteRowClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)
@@ -599,7 +600,16 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.sigAdjustFocusClicked.emit(row)
 
     def deleteSelected(self, row):
-        self.sigDeleteRowClicked.emit(row)
+        choice = QtWidgets.QMessageBox.question(self, 'Next action',
+                                                "Do you want to delete the current position?",
+                                                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if choice == QtWidgets.QMessageBox.Yes:
+            QtWidgets.QMessageBox.information(self, "Deleted position.",
+                                              f'Row {row+1}',
+                                              QtWidgets.QMessageBox.Ok)
+            self.sigDeleteRowClicked.emit(row)
+        else:
+            pass
 
     def dropEvent(self, event):
         if not event.isAccepted() and event.source() == self:
@@ -646,6 +656,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             event.accept()
 
         super().dropEvent(event)
+        self.sigSelectedDragRows.emit(rows, drop_row)
 
     def drop_on(self, event):
         index = self.indexAt(event.pos())

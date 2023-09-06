@@ -210,6 +210,28 @@ class DeckController(LiveUpdatedController):
         self._widget.scan_list_actions_info.setText("Unsaved changes.")
         self._widget.scan_list_actions_info.setHidden(False)
 
+    def drag_and_drop_update(self, selected_rows: List[int], drop_index: int):
+        # Create a copy of the scan_list
+        reordered_list = self.scan_list.copy()
+        # Remove elements at selected_rows and store them in a temporary list
+        selected_rows.sort(reverse=True)
+        selected_elements = [reordered_list.pop(index) for index in selected_rows]
+        selected_elements.reverse()
+        # Calculate the insertion position
+        insert_position = min(drop_index, len(reordered_list))
+        # Insert the selected elements at the calculated position
+        # reordered_list.insert(insert_position, *selected_elements)
+        for element in selected_elements:
+            reordered_list.insert(insert_position, element)
+            insert_position += 1
+
+        self.scan_list = reordered_list
+        self.update_beacons_index()
+        self.update_list_in_widget()
+
+        self._widget.scan_list_actions_info.setText("Unsaved changes.")
+        self._widget.scan_list_actions_info.setHidden(False)
+
     @property
     def selected_well(self):
         return self._selected_well
@@ -433,6 +455,8 @@ class DeckController(LiveUpdatedController):
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
         self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_list)
         self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_list)
+        self._widget.scan_list.sigSelectedDragRows.connect(self.drag_and_drop_update)
+
 
     def connect_widget_buttons(self):
         if isinstance(self._widget.home, guitools.BetterPushButton):

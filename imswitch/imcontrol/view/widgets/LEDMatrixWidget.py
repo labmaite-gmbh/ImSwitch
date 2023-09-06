@@ -143,7 +143,7 @@ class LEDMatrixWidget(Widget):
         return self.inner_ring_mask
 
     def toggle_outer_ring(self):
-        glare_leds = [15]
+        glare_leds = [19]
         if self.ButtonOuterRing.isChecked():
             for i_led in list(range(9, 25)):
                 if i_led not in glare_leds:
@@ -160,7 +160,7 @@ class LEDMatrixWidget(Widget):
 
     @property
     def outer_ring_mask(self):
-        glare_leds = [15]
+        glare_leds = [19]
         return [i_led if (9<=i_led<25 and i_led not in glare_leds) else False for i_led in list(range(25))]
 
 
