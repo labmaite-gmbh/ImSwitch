@@ -90,7 +90,7 @@ class ESP32LEDMatrixManager(LEDMatrixManager):
 
     @property
     def outer_ring_mask(self):
-        glare_leds = [15]
+        glare_leds = [19]
         return [i_led if (9<=i_led<25 and i_led not in glare_leds) else False for i_led in list(range(25))]
 
     def bool_list_to_numpy(self, led_pattern: List[bool] = None):
