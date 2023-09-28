@@ -23,6 +23,7 @@ from .StandaStageController import StandaStageController
 from .RecordingController import RecordingController
 from .WellPlateController import WellPlateController
 from .DeckController import DeckController
+from .DeckLocaiController import DeckLocaiController
 from .DeckScanController import DeckScanController
 from .OpentronsDeckController import OpentronsDeckController
 from .OpentronsDeckScanController import OpentronsDeckScanController

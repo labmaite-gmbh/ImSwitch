@@ -29,7 +29,6 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
-
 class DeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""

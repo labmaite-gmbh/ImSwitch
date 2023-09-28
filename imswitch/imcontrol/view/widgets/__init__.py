@@ -14,6 +14,7 @@ from .HoliSheetWidget import HoliSheetWidget
 from .LEDMatrixWidget import LEDMatrixWidget
 from .WellPlateWidget import WellPlateWidget
 from .DeckWidget import DeckWidget
+from .DeckLocaiWidget import DeckLocaiWidget
 from .DeckScanWidget import DeckScanWidget
 from .OpentronsDeckWidget import OpentronsDeckWidget
 from .OpentronsDeckScanWidget import OpentronsDeckScanWidget

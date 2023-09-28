@@ -81,7 +81,7 @@ class GXPIPYManager(DetectorManager):
 
 
         # TODO: Not implemented yet
-        self.crop(hpos=0, vpos=0, hsize=fullShape[0], vsize=fullShape[1])
+        # self.crop(hpos=0, vpos=0, hsize=fullShape[0], vsize=fullShape[1])
 
         # Prepare actions
         actions = {
@@ -172,9 +172,14 @@ class GXPIPYManager(DetectorManager):
     def startAcquisition(self, liveView=False):
         if self._camera.model == "mock":
 
-            # reconnect? Not sure if this is smart..
-            del self._camera
-            self._camera = self._getGXObj(self.cameraId, self.binningValue)
+            # TODO: reconnect? Not sure if this is smart.. -Answer: probably not...
+            reconnect = False
+            if reconnect:
+                if hasattr(self, "_camera"):
+                    del self._camera
+                self._camera = self._getGXObj(self.cameraId, self.binningValue)
+            elif not hasattr(self, "_camera"):
+                self._camera = self._getGXObj(self.cameraId, self.binningValue)
 
             for propertyName, propertyValue in self.detectorInfo.managerProperties['gxipycam'].items():
                 self._camera.setPropertyValue(propertyName, propertyValue)
@@ -187,7 +192,7 @@ class GXPIPYManager(DetectorManager):
             self._adjustingParameters = False
 
             # TODO: Not implemented yet
-            self.crop(hpos=0, vpos=0, hsize=fullShape[0], vsize=fullShape[1])
+            # self.crop(hpos=0, vpos=0, hsize=fullShape[0], vsize=fullShape[1])
 
 
             # Prepare parameters
