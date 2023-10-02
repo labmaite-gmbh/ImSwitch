@@ -24,10 +24,10 @@ from ..basecontrollers import LiveUpdatedController
 from ...model.SetupInfo import OpentronsDeckInfo
 from locai.utils.scan_list import ScanPoint, open_scan_list, save_scan_list
 
-os.environ["DEBUG"] = "1"
+# os.environ["DEBUG"] = "1"
 from locai_app.generics import Point
 from locai_app.impl.locai_device_impl import LocaiDevice, create_object, CfgLocaiDevice
-from locai_app.exp_control.locai_context import LocaiContext
+from locai_app.exp_control.locai_context import LocaiContext, ExperimentState
 from config.config_definitions import ExperimentConfig
 
 _attrCategory = 'Positioner'
@@ -65,6 +65,7 @@ class CameraWrapper(Camera):
     def disconnect(self):
         self.camera.finalize()
 
+
 class DeckLocaiController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
@@ -72,6 +73,12 @@ class DeckLocaiController(LiveUpdatedController):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__logger = initLogger(self, instanceName="DeckController")
+
+        self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
+        self.load_scan_list_from_cfg(self.exp_config)
+        dev = self.init_device()
+        self.locai_context = LocaiContext(dev, self.experiment_finished)
+        self.locai_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
 
         # Deck and Labwares definitions:
         self.objective_radius = _objectiveRadius
@@ -82,25 +89,30 @@ class DeckLocaiController(LiveUpdatedController):
         self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
         self.initialize_widget(deck=self.deck_definition.deck, labware=self.deck_definition.labwares)
+        self.update_list_in_widget()
 
         self.selected_well = None
         self.relative_focal_plane = None
-        self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
-
-        self.load_scan_list_from_cfg(self.exp_config)
-
-        dev = self.init_device()
-        self.locai_context = LocaiContext(dev)
-        self.locai_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
-
 
         self._widget.sigInfoUpdated.connect(self.get_scan_info)
+        self._widget.sigSliderLEDValueChanged.connect(self.valueLEDChanged)
+
+        self.locai_context.device.light.set_enabled(True)
+
+    def valueLEDChanged(self, value):
+        self.LEDValue = value
+        self._widget.ValueLED.setText(f'{str(value)} %')
+        try:
+            max_value = self.locai_context.device.light.get_max_intensity()
+            self.locai_context.device.light.set_intensity(value=value*max_value/100)
+            print(f"Led value: {value*max_value/100} (Max.: {max_value})")
+        except Exception as e:
+            raise e
 
     def init_device(self):
         cfg_device = CfgLocaiDevice.parse_file(DEVICE_JSON_PATH)
         locai_device: LocaiDevice = create_object(cfg_device)
         locai_device.initialize()
-
         # Load the current labwares
         locai_device.load_labwares(self.exp_config.slots)
         imswitch_camera = self._master.detectorsManager._subManagers["WidefieldCamera"]
@@ -110,7 +122,7 @@ class DeckLocaiController(LiveUpdatedController):
         # TODO: HOME
         return locai_device
 
-    def load_experiment_config_from_json(self, file = EXPERIMENT_JSON_PATH):
+    def load_experiment_config_from_json(self, file=EXPERIMENT_JSON_PATH):
         return ExperimentConfig.parse_file(file)
 
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
@@ -121,6 +133,7 @@ class DeckLocaiController(LiveUpdatedController):
             labware_id = slot.labware_id
             for group_id, group in enumerate(slot.groups):
                 for well_id, (well, positions) in enumerate(group.wells.items()):
+
                     if well_id == 0 and group_id == 0:
                         first_position = slot.groups[0].wells[well][0]  # First position in the well
                     for idx, position in enumerate(positions):
@@ -140,7 +153,6 @@ class DeckLocaiController(LiveUpdatedController):
                         )
 
                         self.scan_list.append(scanpoint)
-        self.update_list_in_widget()
 
     def save_scan_list_to_json(self):
         path = self._widget.display_save_file_window()
@@ -162,10 +174,11 @@ class DeckLocaiController(LiveUpdatedController):
     def initialize_widget(self, deck, labware):
         self.initialize_positioners(options=(0, 0, 1, 4))
         self._widget.init_well_action((2, 2, 1, 2))
-        self._widget.initialize_deck(deck, labware, [(1, 0, 1, 2),(1, 2, 1, 2)])
-        self._widget.init_experiment_buttons((3, 2, 1, 2))
-        self._widget.init_experiment_info((3, 0, 1, 2))
-        self._widget.init_scan_list((5, 0, 2, 4))
+        self._widget.initialize_deck(deck, labware, [(1, 0, 1, 2), (1, 2, 1, 2)])
+        self._widget.init_experiment_buttons((4, 2, 1, 2))
+        self._widget.init_experiment_info((3, 0, 2, 2))
+        self._widget.init_light_source((3, 2, 1, 2))
+        self._widget.init_scan_list((6, 0, 2, 4))
         # Connect widget´s buttons
         self.connect_signals()
         self.connect_widget_buttons()
@@ -186,8 +199,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.update_scan_list(self.scan_list)
         # self._widget.update_scan_list(ExperimentConfig)
 
-
-    @APIExport(runOnUIThread=True)
+    # @APIExport(runOnUIThread=True)
     def go_to_position_in_list(self, row):
         positioner = self.locai_context.device.stage
         well = self.scan_list[row].well
@@ -195,12 +207,15 @@ class DeckLocaiController(LiveUpdatedController):
         point = self.scan_list[row].point
         # abs_pos = self.scan_list[row].get_absolute_position()
         positioner.move_from_well(slot=str(slot), well=well, position=point)
+        [self.updatePosition(axis) for axis in positioner.axes]
         self.select_labware(slot=str(slot))
         self.select_well(well=well)
         self.__logger.debug(f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset+focus={point}")
 
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
+        self.exp_config.remove_pos_by_index(row)
+
         # TODO: delete point from ExperimentConfig.
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
@@ -234,7 +249,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanInfo.setHidden(False)
 
     def update_position_in_row(self, row: int, point: Point):
-        self.scan_list[row].point = point # TODO: this one modifies the exp_config as intended.
+        self.scan_list[row].point = point  # TODO: this one modifies the exp_config as intended.
         self.scan_list[row].position_x = point.x
         self.scan_list[row].position_y = point.y
         self.scan_list[row].position_z = point.z
@@ -268,7 +283,7 @@ class DeckLocaiController(LiveUpdatedController):
             self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
             self.__logger.debug(f"Adjusting focus: Row {row} - {z_old} um->{z_new} um")
         self.scan_list[row].position_z = z_new
-        self.scan_list[row].point.z = p.z # TODO: this one modifies the exp_config as intended.
+        self.scan_list[row].point.z = p.z  # TODO: this one modifies the exp_config as intended.
         self.update_list_in_widget()
         self._widget.ScanInfo.setText("Unsaved changes.")
         self._widget.ScanInfo.setHidden(False)
@@ -390,9 +405,10 @@ class DeckLocaiController(LiveUpdatedController):
     def setPos(self, axis, position):
         """ Moves the positioner to the specified position in the specified axis. """
         positioner = self.locai_context.device.stage
-        positioner.setPosition(position, axis)
+        # positioner.setPosition(position, axis)
         self.updatePosition(axis)
 
+    @APIExport(runOnUIThread=True)
     def moveAbsolute(self, axis):
         positioner = self.locai_context.device.stage
 
@@ -405,23 +421,19 @@ class DeckLocaiController(LiveUpdatedController):
         [self.updatePosition(axis) for axis in positioner.axes]
         # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
 
+    @APIExport(runOnUIThread=True)
     def stepUp(self, positionerName, axis):
         shift = self._widget.getStepSize(positionerName, axis)
-        # if self.scanner.objective_collision_avoidance(axis=axis, shift=shift):
         positioner = self.locai_context.device.stage
         try:
             point = Point()
             point.__setattr__(name=axis.lower(), value=shift)
             positioner.move_relative(point)
-            # positioner.move(shift, axis, is_blocking=False)
-            # [self.updatePosition(axis) for axis in positioner.axes]
-            p = self._master.positionersManager[positionerName]
-            p.setPosition(shift, axis)
-            # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
-
+            [self.updatePosition(axis) for axis in positioner.axes]
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
 
+    @APIExport(runOnUIThread=True)
     def stepDown(self, positionerName, axis):
         shift = -self._widget.getStepSize(positionerName, axis)
         positioner = self.locai_context.device.stage
@@ -429,10 +441,7 @@ class DeckLocaiController(LiveUpdatedController):
             point = Point()
             point.__setattr__(name=axis.lower(), value=shift)
             positioner.move_relative(point)
-            # positioner.move(shift, axis, is_blocking=False)
             [self.updatePosition(axis) for axis in positioner.axes]
-            # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
-
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
 
@@ -458,6 +467,7 @@ class DeckLocaiController(LiveUpdatedController):
         # positionerName = key[1]
         axis = key[2]
         if key[3] == _positionAttr:
+            p = self.locai_context.device.stage.position()
             self.setPositioner(axis, value)
 
     def setPositioner(self, axis: str, position: float) -> None:
@@ -501,26 +511,33 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanStopButton.clicked.connect(self.stop_scan)
         self._widget.ScanSaveButton.clicked.connect(self.save_experiment_config)
 
-
     @APIExport(runOnUIThread=True)
     def start_scan(self):
         self.locai_context.load_experiment(self.exp_config)
-        self._widget.ScanStartButton.setEnabled(False)
-        self._widget.ScanStopButton.setEnabled(True)
         # Start the experiment in a separate thread
         thread_experiment = threading.Thread(target=self.locai_context.run_experiment)
         thread_experiment.start()
+        # TODO: improve check
+        self._widget.ScanStartButton.setEnabled(False)
+        self._widget.ScanSaveButton.setEnabled(False)
+        self._widget.ScanStopButton.setEnabled(True)
 
     @APIExport(runOnUIThread=True)
     def stop_scan(self):
-        if hasattr(self.locai_context, "shared_context"):
-            self.locai_context.shared_context.stop_event.set()
+        # if hasattr(self.locai_context, "shared_context"):
+        if self.locai_context.state in [ExperimentState.RUNNING]:
+            self.locai_context.stop_experiment()
         else:
             print(f"No running experiment to stop.")
 
+    def experiment_finished(self):
+        print("experiment_finished: End End End End End End End End")
+        self._widget.ScanStartButton.setEnabled(True)
+        self._widget.ScanSaveButton.setEnabled(True)
+        self._widget.ScanStopButton.setEnabled(False)
+
     def save_experiment_config(self):
         self.save_scan_list_to_json()
-
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
