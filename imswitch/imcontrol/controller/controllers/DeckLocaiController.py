@@ -20,11 +20,12 @@ from imswitch.imcontrol.view import guitools as guitools
 # from opentrons.types import Point
 
 from locai.deck.deck_config import DeckConfig
+from locai_app.impl.deck.sd_deck_manager import SdDeckManager
 from ..basecontrollers import LiveUpdatedController
 from ...model.SetupInfo import OpentronsDeckInfo
 from locai.utils.scan_list import ScanPoint, open_scan_list, save_scan_list
 
-# os.environ["DEBUG"] = "1"
+os.environ["DEBUG"] = "1"
 from locai_app.generics import Point
 from locai_app.impl.locai_device_impl import LocaiDevice, create_object, CfgLocaiDevice
 from locai_app.exp_control.locai_context import LocaiContext, ExperimentState
@@ -75,20 +76,15 @@ class DeckLocaiController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckController")
 
         self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
-        self.load_scan_list_from_cfg(self.exp_config)
         dev = self.init_device()
         self.locai_context = LocaiContext(dev, self.experiment_finished)
         self.locai_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
+        self.load_scan_list_from_cfg(self.exp_config)
 
         # Deck and Labwares definitions:
         self.objective_radius = _objectiveRadius
-        # TODO: load deck info from EXPerimentConfig and do not provide it to ImSwitch!
-        ot_info: OpentronsDeckInfo = self._setupInfo.deck["OpentronsDeck"]
-        deck_layout = json.load(open(ot_info["deck_file"], "r"))
-        self.deck_definition = DeckConfig(deck_layout, ot_info["labwares"])
-        self.translate_units = self._setupInfo.deck["OpentronsDeck"]["translate_units"]
 
-        self.initialize_widget(deck=self.deck_definition.deck, labware=self.deck_definition.labwares)
+        self.initialize_widget()
         self.update_list_in_widget()
 
         self.selected_well = None
@@ -96,7 +92,6 @@ class DeckLocaiController(LiveUpdatedController):
 
         self._widget.sigInfoUpdated.connect(self.get_scan_info)
         self._widget.sigSliderLEDValueChanged.connect(self.valueLEDChanged)
-
         self.locai_context.device.light.set_enabled(True)
 
     def valueLEDChanged(self, value):
@@ -104,8 +99,9 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ValueLED.setText(f'{str(value)} %')
         try:
             max_value = self.locai_context.device.light.get_max_intensity()
-            self.locai_context.device.light.set_intensity(value=value*max_value/100)
-            print(f"Led value: {value*max_value/100} (Max.: {max_value})")
+            self.locai_context.device.light.set_intensity(value=value * max_value / 100)
+            time.sleep(0.1)
+            # print(f"Led value: {value*max_value/100} (Max.: {max_value})")
         except Exception as e:
             raise e
 
@@ -127,6 +123,7 @@ class DeckLocaiController(LiveUpdatedController):
 
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
         # self.exp_config = ExperimentConfig.parse_file(EXPERIMENT_JSON_PATH)
+        deck_manager = self.locai_context.device.stage.deck_manager
         self.scan_list: List[ScanPoint] = []
         for slot in cfg.slots:
             slot_number = slot.slot_number
@@ -137,6 +134,7 @@ class DeckLocaiController(LiveUpdatedController):
                     if well_id == 0 and group_id == 0:
                         first_position = slot.groups[0].wells[well][0]  # First position in the well
                     for idx, position in enumerate(positions):
+                        well_position = deck_manager.get_well_position(str(slot_number), well)
                         relative_focus_z = position.z - first_position.z
                         scanpoint = ScanPoint(
                             point=position,
@@ -144,8 +142,8 @@ class DeckLocaiController(LiveUpdatedController):
                             slot=slot_number,
                             well=well,
                             position_in_well_index=idx,
-                            position_x=-1,
-                            position_y=-1,
+                            position_x=well_position.x,
+                            position_y=well_position.y,
                             position_z=position.z,
                             offset_from_center_x=position.x,
                             offset_from_center_y=position.y,
@@ -171,14 +169,15 @@ class DeckLocaiController(LiveUpdatedController):
         print(f"Info dict: {info_dict}")
         return
 
-    def initialize_widget(self, deck, labware):
-        self.initialize_positioners(options=(0, 0, 1, 4))
-        self._widget.init_well_action((2, 2, 1, 2))
-        self._widget.initialize_deck(deck, labware, [(1, 0, 1, 2), (1, 2, 1, 2)])
-        self._widget.init_experiment_buttons((4, 2, 1, 2))
-        self._widget.init_experiment_info((3, 0, 2, 2))
-        self._widget.init_light_source((3, 2, 1, 2))
-        self._widget.init_scan_list((6, 0, 2, 4))
+    def initialize_widget(self):
+        self.initialize_positioners(options=(0, 0, 1, 5))
+        self._widget.init_well_action((2, 4, 1, 1))
+        self._widget.initialize_deck(self.locai_context.device.stage.deck_manager, [(1, 0, 1, 3), (1, 3, 1, 2)])
+        self._widget.init_home_button((2, 3, 1, 1))
+        self._widget.init_experiment_buttons((4, 3, 1, 2))
+        self._widget.init_experiment_info((3, 0, 2, 3))
+        self._widget.init_light_source((3, 3, 1, 2))
+        self._widget.init_scan_list((6, 0, 2, 5))
         # Connect widget´s buttons
         self.connect_signals()
         self.connect_widget_buttons()
@@ -204,13 +203,14 @@ class DeckLocaiController(LiveUpdatedController):
         positioner = self.locai_context.device.stage
         well = self.scan_list[row].well
         slot = self.scan_list[row].slot
-        point = self.scan_list[row].point
+        focus_plane = self.scan_list[row].position_z
+        offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y, z=focus_plane)
         # abs_pos = self.scan_list[row].get_absolute_position()
-        positioner.move_from_well(slot=str(slot), well=well, position=point)
+        positioner.move_from_well(slot=str(slot), well=well, position=offset)
         [self.updatePosition(axis) for axis in positioner.axes]
         self.select_labware(slot=str(slot))
         self.select_well(well=well)
-        self.__logger.debug(f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset+focus={point}")
+        self.__logger.debug(f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
 
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
@@ -226,39 +226,44 @@ class DeckLocaiController(LiveUpdatedController):
     def adjust_position_in_list(self, row):
         positioner = self.locai_context.device.stage
         p = positioner.position()
-        slot = positioner.deck_manager.get_slot(p)
-        well = positioner.deck_manager.get_closest_well(p)
-        x_new, y_new, z_new = p.as_tuple()
-        x_old, y_old, z_old = self.scan_list[row].get_absolute_position()
+        x_old, y_old, _ = positioner.deck_manager.get_well_position(str(self.scan_list[row].slot),
+                                                                               self.scan_list[row].well).as_tuple()
+        _, _, z_old = self.scan_list[row].get_absolute_position()
         if (x_old, y_old, z_old) == p.as_tuple():
             self.__logger.debug(f"Adjusting Position: same position selected.")
             return
-        if row == 0:
-            self.relative_focal_plane = z_new
-            self.propagate_relative_focus()
-        else:
-            if self.relative_focal_plane is None:
-                self.relative_focal_plane = self.scan_list[0].position_z
-            self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
+        self.update_row_from_point(row=row, point=p)
         self.__logger.debug(f"Adjusting Position: {(x_old, y_old, z_old)} -> {p.as_tuple()}")
-        self.update_position_in_row(row=row, point=p)
-        self.update_slot_well_in_row(row=row, slot=slot, well=well)
         self.update_beacons_index()
         self.update_list_in_widget()
         self._widget.ScanInfo.setText("Unsaved changes.")
         self._widget.ScanInfo.setHidden(False)
 
-    def update_position_in_row(self, row: int, point: Point):
+    def update_row_from_point(self, row: int, point: Point):
+        positioner = self.locai_context.device.stage
+
+        if row == 0:
+            self.relative_focal_plane = point.z
+            self.propagate_relative_focus()
+        else:
+            if self.relative_focal_plane is None:
+                self.relative_focal_plane = self.scan_list[0].position_z
+            self.scan_list[row].relative_focus_z = (point.z - self.relative_focal_plane)
+
         self.scan_list[row].point = point  # TODO: this one modifies the exp_config as intended.
         self.scan_list[row].position_x = point.x
         self.scan_list[row].position_y = point.y
         self.scan_list[row].position_z = point.z
-
-    def update_slot_well_in_row(self, row: int, slot: str, well: str):
-        if self.scan_list[row].slot != slot:
-            self.scan_list[row].slot = slot
-        if self.scan_list[row].well != well:
-            self.scan_list[row].well = well
+        slot_new = positioner.deck_manager.get_slot(point)
+        well_new = positioner.deck_manager.get_closest_well(point)
+        center_of_closest_well_new = positioner.deck_manager.get_well_position(slot_new, well_new)
+        offset_new = point - center_of_closest_well_new
+        if self.scan_list[row].slot != slot_new:
+            self.scan_list[row].slot = slot_new
+        if self.scan_list[row].well != well_new:
+            self.scan_list[row].well = well_new
+        self.scan_list[row].offset_from_center_x = offset_new.x
+        self.scan_list[row].offset_from_center_y = offset_new.y
 
     def propagate_relative_focus(self):
         for i_row, values in enumerate(self.scan_list[1:]):
@@ -514,7 +519,12 @@ class DeckLocaiController(LiveUpdatedController):
     @APIExport(runOnUIThread=True)
     def start_scan(self):
         self.locai_context.load_experiment(self.exp_config)
+        self.locai_context.device.light.set_enabled(True)
         # Start the experiment in a separate thread
+        if self.locai_context.state != ExperimentState.CREATED:
+            self.locai_context.state = ExperimentState.CREATED
+        if self.locai_context.thread_experiment is not None:
+            del self.locai_context.thread_experiment
         thread_experiment = threading.Thread(target=self.locai_context.run_experiment)
         thread_experiment.start()
         # TODO: improve check

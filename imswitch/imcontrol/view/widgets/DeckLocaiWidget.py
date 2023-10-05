@@ -8,6 +8,7 @@ from qtpy import QtCore, QtWidgets
 from functools import partial
 
 from config.config_definitions import ExperimentConfig
+from locai_app.impl.deck.sd_deck_manager import SdDeckManager
 from .basewidgets import Widget
 
 
@@ -37,7 +38,7 @@ class DeckLocaiWidget(Widget):
         self.numPositioners = 0
         self.pars = {}
         self.main_grid_layout = QtWidgets.QGridLayout()
-        self.scan_list = TableWidgetDragRows() # Initialize empty table
+        self.scan_list = TableWidgetDragRows()  # Initialize empty table
         self.info = ""  # TODO: use QLabel...
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
@@ -163,13 +164,14 @@ class DeckLocaiWidget(Widget):
             if 0 in pos:
                 self.wells[corrds] = QtWidgets.QLabel(text=str(corrds))  # QtWidgets.QPushButton(corrds)
                 # self.wells[corrds].setFixedSize(25, 20)
-                self.wells[corrds].setMaximumSize(30, 25)
+                # self.wells[corrds].setMaximumSize(30, 25)
                 self.wells[corrds].setStyleSheet("background-color: None; font-size: 12px")
             else:
                 self.wells[corrds] = guitools.BetterPushButton(corrds)  # QtWidgets.QPushButton(corrds)
-                # self.wells[corrds].setFixedSize(25, 20)
-                self.wells[corrds].setMaximumSize(30, 25)
+                # self.wells[corrds].setMaximumSize(30, 25)
                 self.wells[corrds].setStyleSheet("background-color: grey; font-size: 14px")
+            self.wells[corrds].setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                             QtWidgets.QSizePolicy.Expanding)
             # Set style for empty cell
             # self.wells[corrds].setStyleSheet("background-color: none")
             # Add button/label to layout
@@ -182,21 +184,22 @@ class DeckLocaiWidget(Widget):
                     btn.setStyleSheet("background-color: blue; font-size: 14px")
                 else:
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
-        self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                            QtWidgets.QSizePolicy.Expanding)
+        # self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+        #                                     QtWidgets.QSizePolicy.Expanding)
+        # self._wells_group_box.setMinimumSize(100,100)
         self._wells_group_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._wells_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
-    def initialize_deck(self, deck_dict: Dict, labwares_dict: Dict, options=[(1, 0, 1, 2), (1, 2, 1, 2)]):
-        self._deck_dict = deck_dict
-        self._labware_dict = labwares_dict
+    def initialize_deck(self, deck_manager: SdDeckManager, options=[(1, 0, 1, 2), (1, 2, 1, 2)]):
+        self._deck_dict = deck_manager.deck_layout
+        self._labware_dict = deck_manager.labwares
         self._deck_group_box = QtWidgets.QGroupBox("Deck layout")
         layout = QtWidgets.QHBoxLayout()
 
         # Create dictionary to hold buttons
-        slots = [slot["id"] for slot in deck_dict["locations"]["orderedSlots"]]
-        used_slots = list(labwares_dict.keys())
+        slots = [slot.id for slot in deck_manager.deck_layout.locations.orderedSlots]
+        used_slots = list(deck_manager.labwares.keys())
         self.deck_slots = {}
 
         # Create dictionary to store deck slots names (button texts)
@@ -227,12 +230,10 @@ class DeckLocaiWidget(Widget):
                                            QtWidgets.QSizePolicy.Expanding)
         self._deck_group_box.setLayout(layout)
         self.select_labware(used_slots[0], options[0])
-        if len(used_slots) == 1 and "1" in self.deck_slots.keys():
-            self.deck_slots["1"].setHidden(True)
         self.main_grid_layout.addWidget(self._deck_group_box, *options[1])
         self.setLayout(self.main_grid_layout)
 
-    def init_light_source(self, options=(3,0,1,1)):
+    def init_light_source(self, options=(3, 0, 1, 1)):
         # LED
         led_layout = QtWidgets.QHBoxLayout()
         self.LEDWidget = QtWidgets.QGroupBox()
@@ -304,6 +305,21 @@ class DeckLocaiWidget(Widget):
         ScanInfo_layout.addWidget(self.ScanInfo)
         self.ScanInfo_widget.setLayout(ScanInfo_layout)
         self.main_grid_layout.addWidget(self.ScanInfo_widget, *options)
+        self.setLayout(self.main_grid_layout)
+
+    def init_home_button(self, options=(2, 2, 1, 1)):
+        self.home_button_widget = QtWidgets.QGroupBox("Stage")
+        home_button_layout = QtWidgets.QGridLayout()
+        self.home_button = guitools.BetterPushButton(text="HOME")  # QtWidgets.QPushButton(corrds)
+        self.home_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                       QtWidgets.QSizePolicy.Expanding)
+        self.home_button.setMinimumWidth(50)
+        self.home_button.setMinimumHeight(50)
+        self.home_button.setMaximumHeight(100)
+        self.home_button.setStyleSheet("background-color: black; font-size: 14px")
+        home_button_layout.addWidget(self.home_button)
+        self.home_button_widget.setLayout(home_button_layout)
+        self.main_grid_layout.addWidget(self.home_button_widget, *options)
         self.setLayout(self.main_grid_layout)
 
     def init_well_action(self, options=(3, 0, 1, 1)):
@@ -413,6 +429,8 @@ class DeckLocaiWidget(Widget):
 
         buttons_layout = QtWidgets.QHBoxLayout()
         self.prevButton = guitools.BetterPushButton('Previous')
+        self.adjustFocusButton = guitools.BetterPushButton('Focus')
+        self.focusAllButton = guitools.BetterPushButton('Focus All')
         self.nextButton = guitools.BetterPushButton('Next')
         self.prevButton.clicked.connect(self.prevRow)
         self.nextButton.clicked.connect(self.nextRow)
@@ -668,7 +686,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             if action == goto_action:
                 self.go_to_action(row)
             elif action == delete_action:
-                self.deleteSelected(row)
+                pass
+                # self.deleteSelected(row)
             elif action == adjust_focus_action:
                 self.adjust_focus_action(row)
             elif action == adjust_pos_action:
