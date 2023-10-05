@@ -151,7 +151,7 @@ class CameraGXIPY:
 
     def set_frame_rate(self, frame_rate):
         if frame_rate == -1:
-            frame_rate = 10000 # go as fast as you can
+            frame_rate = 10000  # go as fast as you can
         self.frame_rate = frame_rate
 
         # temporary

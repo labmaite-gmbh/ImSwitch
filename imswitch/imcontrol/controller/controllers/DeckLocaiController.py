@@ -39,9 +39,9 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # DEVICE_JSON_PATH = os.path.join(os.path.dirname(__file__), r'config\locai_device_config.json')
-DEVICE_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_device_config.json"
+DEVICE_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_device_config.json"
 # EXPERIMENT_JSON_PATH = os.path.join(os.path.dirname(__file__), r'config\test_locai_experiment_config.json')
-EXPERIMENT_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_experiment_config.json"
+EXPERIMENT_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_experiment_config.json"
 
 from hardware_api.core.abcs import Camera
 from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
@@ -98,6 +98,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.sigSliderLEDValueChanged.connect(self.valueLEDChanged)
 
         self.locai_context.device.light.set_enabled(True)
+        [self.updatePosition(axis) for axis in self.locai_context.device.stage.axes]
 
     def valueLEDChanged(self, value):
         self.LEDValue = value
@@ -120,6 +121,7 @@ class DeckLocaiController(LiveUpdatedController):
         camera.camera = imswitch_camera
         locai_device.attach_camera(camera)  # TODO: get imswitch camera
         # TODO: HOME
+        # locai_device.stage.home()
         return locai_device
 
     def load_experiment_config_from_json(self, file=EXPERIMENT_JSON_PATH):
@@ -199,7 +201,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.update_scan_list(self.scan_list)
         # self._widget.update_scan_list(ExperimentConfig)
 
-    # @APIExport(runOnUIThread=True)
+    @APIExport(runOnUIThread=True)
     def go_to_position_in_list(self, row):
         positioner = self.locai_context.device.stage
         well = self.scan_list[row].well
@@ -224,6 +226,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanInfo.setHidden(False)
 
     def adjust_position_in_list(self, row):
+        # TODO: correct!!
         positioner = self.locai_context.device.stage
         p = positioner.position()
         slot = positioner.deck_manager.get_slot(p)
@@ -335,7 +338,7 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.sigStepDownClicked.connect(self.stepDown)
         self._widget.sigsetSpeedClicked.connect(self.setSpeedGUI)
         # self._widget.sigStepAbsoluteClicked.connect(self.moveAbsolute)
-        self._widget.sigHomeAxisClicked.connect(self.homeAxis)
+        # self._widget.sigHomeAxisClicked.connect(self.homeAxis)
         self._widget.sigStopAxisClicked.connect(self.stopAxis)
 
     def stopAxis(self, positionerName, axis):
@@ -349,10 +352,10 @@ class DeckLocaiController(LiveUpdatedController):
             positioner.positioner.z_axis.stop()
         # self._master.positionersManager[positionerName].forceStop(axis)
 
-    def homeAxis(self, positionerName, axis):
-        if axis != "Z":
-            self.__logger.debug(f"Homing axis {axis}")
-            self._master.positionersManager[positionerName].doHome(axis)
+    # def homeAxis(self, positionerName, axis):
+    #     if axis != "Z":
+    #         self.__logger.debug(f"Homing axis {axis}")
+    #         self._master.positionersManager[positionerName].doHome(axis)
 
     def closeEvent(self):
         self._master.positionersManager.execOnAll(
@@ -495,7 +498,8 @@ class DeckLocaiController(LiveUpdatedController):
         positioner = self.locai_context.device.stage
         self.__logger.debug(f"Move to {well} ({slot})")
         # speed = [self._widget.getSpeed(self.positioner_name, axis) for axis in positioner.axes]
-        positioner.move_from_well(slot=slot, well=well, position=Point())
+        p = positioner.position()
+        positioner.move_from_well(slot=slot, well=well, position=Point(z=p.z))
         [self.updatePosition(axis) for axis in positioner.axes]
         # self._widget.add_current_btn.clicked.connect(self.add_current_position_to_scan)
 
@@ -515,8 +519,7 @@ class DeckLocaiController(LiveUpdatedController):
     def start_scan(self):
         self.locai_context.load_experiment(self.exp_config)
         # Start the experiment in a separate thread
-        thread_experiment = threading.Thread(target=self.locai_context.run_experiment)
-        thread_experiment.start()
+        self.locai_context.run_experiment()
         # TODO: improve check
         self._widget.ScanStartButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(False)
@@ -536,6 +539,9 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
 
+    def update_scan_info(self, dict):
+        pass
+        # connect to UI
     def save_experiment_config(self):
         self.save_scan_list_to_json()
 
