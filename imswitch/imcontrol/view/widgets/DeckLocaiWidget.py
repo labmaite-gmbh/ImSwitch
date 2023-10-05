@@ -71,7 +71,7 @@ class DeckLocaiWidget(Widget):
             if axis == "Z":
                 self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('0.1')
             else:
-                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('10')
+                self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('1')
             self.pars['AbsolutePosEdit' + parNameSuffix] = QtWidgets.QLineEdit('0')
             self.pars['AbsolutePosButton' + parNameSuffix] = guitools.BetterPushButton('Go!')
 
@@ -89,19 +89,18 @@ class DeckLocaiWidget(Widget):
             if hasSpeed:
                 self.pars['Speed' + parNameSuffix] = QtWidgets.QLabel('Speed:')
                 self.pars['Speed' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
-                self.pars['SpeedEdit' + parNameSuffix] = QtWidgets.QLineEdit('15000')
+                self.pars['SpeedEdit' + parNameSuffix] = QtWidgets.QLineEdit('12') if axis != "Z" else QtWidgets.QLineEdit('8')
 
                 layout.addWidget(self.pars['Speed' + parNameSuffix], self.numPositioners, 9)
                 layout.addWidget(self.pars['SpeedEdit' + parNameSuffix], self.numPositioners, 10)
 
             if hasHome:
-                if axis != "Z":  # Avoid Z axis Home!
-                    self.pars['Home' + parNameSuffix] = guitools.BetterPushButton('Home')
-                    layout.addWidget(self.pars['Home' + parNameSuffix], self.numPositioners, 11)
+                self.pars['Home' + parNameSuffix] = guitools.BetterPushButton('Home')
+                layout.addWidget(self.pars['Home' + parNameSuffix], self.numPositioners, 11)
 
-                    self.pars['Home' + parNameSuffix].clicked.connect(
-                        lambda *args, axis=axis: self.sigHomeAxisClicked.emit(positionerName, axis)
-                    )
+                self.pars['Home' + parNameSuffix].clicked.connect(
+                    lambda *args, axis=axis: self.sigHomeAxisClicked.emit(positionerName, axis)
+                )
 
             if hasStop:
                 self.pars['Stop' + parNameSuffix] = guitools.BetterPushButton('Stop')
@@ -321,6 +320,16 @@ class DeckLocaiWidget(Widget):
         self.home_button_widget.setLayout(home_button_layout)
         self.main_grid_layout.addWidget(self.home_button_widget, *options)
         self.setLayout(self.main_grid_layout)
+
+    def update_scan_info(self, dict_info):
+        # {
+        #     'experiment_status': self.state.value,
+        #     'scan_info': self.shared_context.scan_info,
+        #     'fluidics_info': self.shared_context.fluidic_info,
+        #     'position': self.shared_context.position,
+        #     'estimated_remaining_time': self.shared_context.remaining_time
+        # }
+        self.ScanInfo.setText(dict_info["experiment_status"])
 
     def init_well_action(self, options=(3, 0, 1, 1)):
         self.well_action_widget = QtWidgets.QGroupBox("Selected well")
@@ -548,7 +557,7 @@ class DeckLocaiWidget(Widget):
     def updatePosition(self, positionerName, axis, position):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
         self.pars['Position' + parNameSuffix].setText(
-            f'<strong>{round(position)} um</strong>')  # TODO: depends if um or mm!
+            f'<strong>{position:.3f} mm</strong>')  # TODO: depends if um or mm!
 
     def updateSpeed(self, positionerName, axis, speed):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
@@ -686,8 +695,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             if action == goto_action:
                 self.go_to_action(row)
             elif action == delete_action:
-                pass
-                # self.deleteSelected(row)
+                self.deleteSelected(row)
             elif action == adjust_focus_action:
                 self.adjust_focus_action(row)
             elif action == adjust_pos_action:

@@ -3,6 +3,8 @@ from pathlib import Path
 
 import os
 
+# os.environ["DEBUG"] = "1"
+
 locai_pth = str(Path(__file__).parent.parent.absolute())
 print("Locai path is ", locai_pth)
 sys.path.append(locai_pth)
