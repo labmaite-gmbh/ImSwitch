@@ -18,8 +18,6 @@ class DeckLocaiWidget(Widget):
     sigStepDownClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigsetSpeedClicked = QtCore.Signal(str, str)  # (positionerName, axis)
 
-    sigInfoUpdated = QtCore.Signal(dict)
-
     sigScanStop = QtCore.Signal(bool)  # (enabled)
     sigScanStart = QtCore.Signal(bool)  # (enabled)
     sigScanSave = QtCore.Signal()

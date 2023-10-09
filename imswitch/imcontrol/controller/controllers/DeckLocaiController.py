@@ -1,29 +1,15 @@
-import dataclasses
-import json
 import os
 import threading
 
 import time
 from functools import partial
-from typing import Optional
-
-from itertools import product
-import csv
 from typing import Union, Dict, Tuple, List, Optional
-import re
 
-import pandas as pd
-import numpy as np
-from imswitch.imcommon.framework import Signal
 from imswitch.imcommon.model import initLogger, APIExport
 from imswitch.imcontrol.view import guitools as guitools
-# from opentrons.types import Point
 
-from locai.deck.deck_config import DeckConfig
-from locai_app.impl.deck.sd_deck_manager import SdDeckManager
 from ..basecontrollers import LiveUpdatedController
-from ...model.SetupInfo import OpentronsDeckInfo
-from locai.utils.scan_list import ScanPoint, open_scan_list, save_scan_list
+from locai.utils.scan_list import ScanPoint
 
 os.environ["DEBUG"] = "1"
 from locai_app.generics import Point
@@ -77,7 +63,7 @@ class DeckLocaiController(LiveUpdatedController):
 
         self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
         dev = self.init_device()
-        self.locai_context = LocaiContext(dev, self.experiment_finished)
+        self.locai_context = LocaiContext(dev, callback=self.experiment_finished, callback_info=self.update_scan_info)
         self.locai_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
         self.load_scan_list_from_cfg(self.exp_config)
 
@@ -90,9 +76,35 @@ class DeckLocaiController(LiveUpdatedController):
         self.selected_well = None
         self.relative_focal_plane = None
 
-        self._widget.sigInfoUpdated.connect(self.get_scan_info)
         self._widget.sigSliderLEDValueChanged.connect(self.valueLEDChanged)
         self.locai_context.device.light.set_enabled(True)
+
+    def update_scan_info(self, dict_info):
+        formated_info = self.format_info(dict_info)
+        self._widget.ScanInfo.setText(formated_info)
+        self._widget.ScanInfo.setHidden(False)
+
+    def format_info(self, info):
+        scan_info = f"STATUS: {info['experiment_status']}\n" \
+                    f"SCAN: {info['scan_info'].status.value}\n" \
+                    f"\tRound: {info['scan_info'].current_scan_number}/{self.exp_config.scan_params.number_scans}\n" \
+                    f"\tSlot: {info['scan_info'].current_slot}, Well: {info['scan_info'].current_well}\n" \
+                    f"\tPosition: ({info['position'].x:.2f}, {info['position'].y:.2f}, {info['position'].z:.3f})\n\n" \
+                    f"\tStarted: {'NotImplementedYet'} \n\tRemaining: {info['estimated_remaining_time']} \n\tNext in: {'NotImplementedYet'}\n\n"
+        # f" Index: {info['scan_info'].current_pos_index}" \
+        fluidics_info = f"FLUIDICS: {info['fluidics_info'].status.value}\n" \
+                        f"\tAction {info['fluidics_info'].current_action_number}:\n"
+        action = info['fluidics_info'].current_action
+        if action is not None:
+            action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
+                          f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
+            reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})" if action.reservoir is not None else "\n\n"
+        else:
+            action_info = "\n\n"
+            reservoir_info = "\n\n"
+        event_info = f"EVENT: {info['event']}\n"
+
+        return scan_info + fluidics_info + action_info + reservoir_info + event_info
 
     def valueLEDChanged(self, value):
         self.LEDValue = value
@@ -204,13 +216,15 @@ class DeckLocaiController(LiveUpdatedController):
         well = self.scan_list[row].well
         slot = self.scan_list[row].slot
         focus_plane = self.scan_list[row].position_z
-        offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y, z=focus_plane)
+        offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y,
+                       z=focus_plane)
         # abs_pos = self.scan_list[row].get_absolute_position()
         positioner.move_from_well(slot=str(slot), well=well, position=offset)
         [self.updatePosition(axis) for axis in positioner.axes]
         self.select_labware(slot=str(slot))
         self.select_well(well=well)
-        self.__logger.debug(f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
+        self.__logger.debug(
+            f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
 
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
@@ -227,7 +241,7 @@ class DeckLocaiController(LiveUpdatedController):
         positioner = self.locai_context.device.stage
         p = positioner.position()
         x_old, y_old, _ = positioner.deck_manager.get_well_position(str(self.scan_list[row].slot),
-                                                                               self.scan_list[row].well).as_tuple()
+                                                                    self.scan_list[row].well).as_tuple()
         _, _, z_old = self.scan_list[row].get_absolute_position()
         if (x_old, y_old, z_old) == p.as_tuple():
             self.__logger.debug(f"Adjusting Position: same position selected.")
@@ -437,6 +451,8 @@ class DeckLocaiController(LiveUpdatedController):
             [self.updatePosition(axis) for axis in positioner.axes]
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.ScanInfo.setText("Avoiding objective collision.")
+            self._widget.scan_list_actions_info.setHidden(False)
 
     @APIExport(runOnUIThread=True)
     def stepDown(self, positionerName, axis):
@@ -449,6 +465,8 @@ class DeckLocaiController(LiveUpdatedController):
             [self.updatePosition(axis) for axis in positioner.axes]
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.ScanInfo.setText("Avoiding objective collision.")
+            self._widget.scan_list_actions_info.setHidden(False)
 
     def setSpeedGUI(self, axis):
         speed = self._widget.getSpeed(self.positioner_name, axis)
