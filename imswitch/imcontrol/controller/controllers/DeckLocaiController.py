@@ -39,9 +39,9 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
-# DEVICE_JSON_PATH = os.path.join(os.path.dirname(__file__), r'config\locai_device_config.json')
+# DEVICE_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_device_config.json"
 DEVICE_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_device_config.json"
-# EXPERIMENT_JSON_PATH = os.path.join(os.path.dirname(__file__), r'config\test_locai_experiment_config.json')
+# EXPERIMENT_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_experiment_config.json"
 EXPERIMENT_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_experiment_config.json"
 
 from hardware_api.core.abcs import Camera
