@@ -85,12 +85,13 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanInfo.setHidden(False)
 
     def format_info(self, info):
-        scan_info = f"STATUS: {info['experiment_status']}\n" \
-                    f"SCAN: {info['scan_info'].status.value}\n" \
+        exp_time = f"Experiment started at {info['start_time']}" if hasattr(info, "start_time") else ""
+        scan_info = f"STATUS: {info['experiment_status']}\t{exp_time}\n" \
+                    f"SCAN {info['scan_info'].status.value} started at {'NotImplementedYet'}\n" \
                     f"\tRound: {info['scan_info'].current_scan_number}/{self.exp_config.scan_params.number_scans}\n" \
                     f"\tSlot: {info['scan_info'].current_slot}, Well: {info['scan_info'].current_well}\n" \
                     f"\tPosition: ({info['position'].x:.2f}, {info['position'].y:.2f}, {info['position'].z:.3f})\n\n" \
-                    f"\tStarted: {'NotImplementedYet'} \n\tRemaining: {info['estimated_remaining_time']} \n\tNext in: {'NotImplementedYet'}\n\n"
+                    f"\tRemaining: {info['estimated_remaining_time']} \n\tNext in: {'NotImplementedYet'}\n\n"
         # f" Index: {info['scan_info'].current_pos_index}" \
         fluidics_info = f"FLUIDICS: {info['fluidics_info'].status.value}\n" \
                         f"\tAction {info['fluidics_info'].current_action_number}:\n"
@@ -108,10 +109,10 @@ class DeckLocaiController(LiveUpdatedController):
 
     def valueLEDChanged(self, value):
         self.LEDValue = value
-        self._widget.ValueLED.setText(f'{str(value)} %')
         try:
-            max_value = self.locai_context.device.light.get_max_intensity()
-            self.locai_context.device.light.set_intensity(value=value * max_value / 100)
+            self.locai_context.device.light.set_intensity(value=value/1000)
+            # max_value = self.locai_context.device.light.get_max_intensity()
+            # self.locai_context.device.light.set_intensity(value=value * max_value / 100)
             time.sleep(0.1)
             # print(f"Led value: {value*max_value/100} (Max.: {max_value})")
         except Exception as e:

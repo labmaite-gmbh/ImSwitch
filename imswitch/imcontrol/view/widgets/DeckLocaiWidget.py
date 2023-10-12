@@ -232,23 +232,32 @@ class DeckLocaiWidget(Widget):
 
     def init_light_source(self, options=(3, 0, 1, 1)):
         # LED
+
         led_layout = QtWidgets.QHBoxLayout()
         self.LEDWidget = QtWidgets.QGroupBox()
-        valueDecimalsLED = 0
-        valueRangeLED = (0, 100)
-        tickIntervalLED = 1
-        singleStepLED = 1
-        self.sliderLED, self.LabelLED = self.setupSliderGui('Intensity (LED):', valueDecimalsLED, valueRangeLED,
-                                                            tickIntervalLED, singleStepLED)
-        self.ValueLED = QtWidgets.QLabel("0 %")
-        self.sliderLED.valueChanged.connect(
-            lambda value: self.sigSliderLEDValueChanged.emit(value)
-        )
+        # valueDecimalsLED = 0
+        # valueRangeLED = (0, 100)
+        # tickIntervalLED = 1
+        # singleStepLED = 1
+        # self.sliderLED, self.LabelLED = self.setupSliderGui('Intensity (LED):', valueDecimalsLED, valueRangeLED,
+        #                                                     tickIntervalLED, singleStepLED)
+        self.LabelLED = QtWidgets.QLabel("LED Intensity [mA]: ")
+        # self.sliderLED.valueChanged.connect(
+        #     lambda value: self.sigSliderLEDValueChanged.emit(value)
+        # )
+        # led_layout.addWidget(self.ValueLED)
+        # led_layout.addWidget(self.sliderLED, 3)
+        self.LED_spinbox = QtWidgets.QSpinBox()
+        self.LED_spinbox.setMaximum(1000)
+        self.LED_spinbox.setMinimum(0)
         led_layout.addWidget(self.LabelLED)
-        led_layout.addWidget(self.ValueLED)
-        led_layout.addWidget(self.sliderLED, 3)
+        led_layout.addWidget(self.LED_spinbox)
+        self.LED_spinbox.valueChanged.connect(self.led_value_change)
         self.LEDWidget.setLayout(led_layout)
         self.main_grid_layout.addWidget(self.LEDWidget, *options)
+
+    def led_value_change(self):
+        self.sigSliderLEDValueChanged.emit(self.LED_spinbox.value())
 
     def setupSliderGui(self, label, valueDecimals, valueRange, tickInterval, singleStep):
         ScanLabel = QtWidgets.QLabel(label)
