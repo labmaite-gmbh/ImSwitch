@@ -275,22 +275,25 @@ class DeckLocaiWidget(Widget):
     def init_experiment_buttons(self, options=(7, 0, 1, 1)):
         exp_buttons_layout = QtWidgets.QGridLayout()
         self.ScanActionsWidget = QtWidgets.QGroupBox("Scan List Actions")
-
+        self.ScanActionsWidget.setMinimumWidth(200)
         self.ScanSaveButton = guitools.BetterPushButton('Save')
         self.ScanSaveButton.setStyleSheet("font-size: 14px")
-        self.ScanSaveButton.setFixedHeight(40)
+        self.ScanSaveButton.setFixedHeight(35)
+        self.ScanSaveButton.setMinimumWidth(60)
         self.ScanSaveButton.setCheckable(False)
         self.ScanSaveButton.toggled.connect(self.sigScanSave)
 
         self.ScanStartButton = guitools.BetterPushButton('Start')
         self.ScanStartButton.setStyleSheet("background-color: black; font-size: 14px")
-        self.ScanStartButton.setFixedHeight(40)
+        self.ScanStartButton.setFixedHeight(35)
+        self.ScanStartButton.setMinimumWidth(60)
         self.ScanStartButton.setCheckable(False)
         self.ScanStartButton.toggled.connect(self.sigScanStart)
 
         self.ScanStopButton = guitools.BetterPushButton('Stop')
         self.ScanStopButton.setStyleSheet("background-color: gray; font-size: 14px")
-        self.ScanStopButton.setFixedHeight(40)
+        self.ScanStopButton.setFixedHeight(35)
+        self.ScanStopButton.setMinimumWidth(60)
         self.ScanStopButton.setCheckable(False)
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
@@ -354,90 +357,6 @@ class DeckLocaiWidget(Widget):
         self.well_action_widget.setLayout(well_action_layout)
         self.main_grid_layout.addWidget(self.well_action_widget, *options)
         self.setLayout(self.main_grid_layout)
-
-    # def init_beacons(self, options=(3,0,1,1)):
-    #     self.beacons_widget = QtWidgets.QGroupBox("Selected well")
-    #     beacons_layout = QtWidgets.QGridLayout()
-    #     self.beacons_nx = QtWidgets.QSpinBox()
-    #     self.beacons_nx.setMinimum(1)
-    #     self.beacons_nx.setMaximum(1000)
-    #     self.beacons_ny = QtWidgets.QSpinBox()
-    #     self.beacons_ny.setMinimum(1)
-    #     self.beacons_ny.setMaximum(1000)
-    #     self.beacons_dx = QtWidgets.QLineEdit("600")
-    #     self.beacons_dy = QtWidgets.QLineEdit("600")
-    #     self.beacons_add = guitools.BetterPushButton('ADD')
-    #     self.beacons_nx.hide()
-    #     self.beacons_ny.hide()
-    #     self.beacons_dx.hide()
-    #     self.beacons_dy.hide()
-    #     self.beacons_add.hide()
-    #     self.beacons_selected_well = QtWidgets.QLabel("<Well>")
-    #     # beacons_layout.addWidget(QtWidgets.QLabel("# Positions in well"), 0, 0, 1, 1)
-    #     # beacons_layout.addWidget(QtWidgets.QLabel("Nx x Ny"), 0, 0, 1, 1)
-    #     # beacons_layout.addWidget(QtWidgets.QLabel("Dx x Dy [um]"), 1, 0, 1, 1)
-    #     # beacons_layout.addWidget(self.pos_in_well_lined, 0, 2, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_nx, 0, 1, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_ny, 0, 2, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_dx, 1, 1, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_dy, 1, 2, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_selected_well, 0, 3, 1, 1)
-    #     beacons_layout.addWidget(self.beacons_add, 1, 3, 1, 1)
-    #     # self.beacons_widget.setMaximumHeight(120)
-    #     self.beacons_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                       QtWidgets.QSizePolicy.Expanding)
-    #     self.beacons_widget.setLayout(beacons_layout)
-    #     self.main_grid_layout.addWidget(self.beacons_widget, *options)
-    #
-    # def init_scan_list_actions(self, options=(1,0,1,1)):
-    #     scan_list_actions_layout = QtWidgets.QGridLayout()
-    #     self.scan_list_actions_widget = QtWidgets.QGroupBox("Scan List Actions")
-    #     self.scan_list_actions_info = QtWidgets.QLabel("")
-    #     self.scan_list_actions_info.setMaximumHeight(45)
-    #     self.scan_list_actions_info.setHidden(True)
-    #
-    #     self.buttonOpen = guitools.BetterPushButton('Open')
-    #     self.buttonOpen.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                   QtWidgets.QSizePolicy.Expanding)
-    #     self.buttonOpen.setFixedHeight(25)
-    #     self.buttonOpen.setStyleSheet("background-color : gray; color: black")
-    #     self.buttonSave = guitools.BetterPushButton('Save')
-    #     self.buttonSave.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                   QtWidgets.QSizePolicy.Expanding)
-    #     self.buttonSave.setFixedHeight(25)
-    #     self.buttonSave.setStyleSheet("background-color : gray; color: black")
-    #     self.buttonClear = guitools.BetterPushButton('Clear')
-    #     self.buttonClear.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                    QtWidgets.QSizePolicy.Expanding)
-    #     self.buttonClear.setFixedHeight(25)
-    #     self.buttonClear.setStyleSheet("background-color : gray; color: black")
-    #
-    #     scan_list_actions_layout.addWidget(self.scan_list_actions_info, 1, 0, 1, 3)
-    #     scan_list_actions_layout.addWidget(self.buttonOpen, 0, 0, 1, 1)
-    #     scan_list_actions_layout.addWidget(self.buttonSave, 0, 1, 1, 1)
-    #     scan_list_actions_layout.addWidget(self.buttonClear, 0, 2, 1, 1)
-    #     self.scan_list_actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                                 QtWidgets.QSizePolicy.Expanding)
-    #     self.scan_list_actions_widget.setMaximumHeight(120)
-    #     self.scan_list_actions_widget.setLayout(scan_list_actions_layout)
-    #     self.main_grid_layout.addWidget(self.scan_list_actions_widget, *options)
-    #
-    # def init_actions(self, options = (0,0,1,1)):
-    #     self._actions_widget = QtWidgets.QGroupBox("Actions")
-    #     actions_layout = QtWidgets.QHBoxLayout()
-    #     self.goto_btn = guitools.BetterPushButton('GO TO')
-    #     self.goto_btn.setMaximumHeight(50)
-    #     self.add_current_btn = guitools.BetterPushButton('ADD CURRENT')
-    #     self.add_current_btn.setMaximumHeight(50)
-    #     self.add_current_btn.hide()
-    #     actions_layout.addWidget(self.goto_btn)
-    #     actions_layout.addWidget(self.add_current_btn)
-    #     self._actions_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-    #                                        QtWidgets.QSizePolicy.Expanding)
-    #     # self._actions_widget.setMaximumWidth(140)
-    #     # self._actions_widget.setMaximumHeight(60)
-    #     self._actions_widget.setLayout(actions_layout)
-    #     self.main_grid_layout.addWidget(self._actions_widget, *options)
 
     def init_scan_list(self, options=(4, 0, 1, 1)):
         self.currentIndex = 0
@@ -618,7 +537,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         # self.viewport().setAcceptDrops(True)
         # self.setDragDropOverwriteMode(False)
         # self.setDropIndicatorShown(True)
-
+        self.context_menu_enabled = True
         self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         # self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
@@ -686,6 +605,12 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         return None
 
     def contextMenuEvent(self, event):
+        if self.context_menu_enabled:
+            self._contextMenuEvent(event)
+        else:
+            event.ignore()
+
+    def _contextMenuEvent(self, event):
         if self.selectionModel().selection().indexes():
             for i in self.selectionModel().selection().indexes():
                 row, column = i.row(), i.column()

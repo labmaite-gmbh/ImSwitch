@@ -78,6 +78,9 @@ class DeckLocaiController(LiveUpdatedController):
 
         self._widget.sigSliderLEDValueChanged.connect(self.valueLEDChanged)
         self.locai_context.device.light.set_enabled(True)
+        initial_led_value = self.locai_context.device.light.get_intensity()
+        self.valueLEDChanged(initial_led_value) # TODO: check if it works!
+
 
     def update_scan_info(self, dict_info):
         formated_info = self.format_info(dict_info)
@@ -550,6 +553,13 @@ class DeckLocaiController(LiveUpdatedController):
         self._widget.ScanStartButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(False)
         self._widget.ScanStopButton.setEnabled(True)
+        self._widget._positioner_widget.hide()
+        self._widget._wells_group_box.hide()
+        self._widget._deck_group_box.hide()
+        self._widget.LEDWidget.hide()
+        self._widget.home_button_widget.hide()
+        self._widget.well_action_widget.hide()
+        self._widget.scan_list.context_menu_enabled = False
 
     @APIExport(runOnUIThread=True)
     def stop_scan(self):
@@ -560,10 +570,17 @@ class DeckLocaiController(LiveUpdatedController):
             print(f"No running experiment to stop.")
 
     def experiment_finished(self):
-        print("experiment_finished: End End End End End End End End")
         self._widget.ScanStartButton.setEnabled(True)
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
+        self._widget._positioner_widget.show()
+        self._widget._wells_group_box.show()
+        self._widget._deck_group_box.show()
+        self._widget.LEDWidget.show()
+        self._widget.home_button_widget.show()
+        self._widget.well_action_widget.show()
+        self._widget.scan_list.context_menu_enabled = True
+
 
     def save_experiment_config(self):
         self.save_scan_list_to_json()
