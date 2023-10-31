@@ -137,6 +137,12 @@ class DeckLocaiController(LiveUpdatedController):
     def load_experiment_config_from_json(self, file=EXPERIMENT_JSON_PATH):
         return ExperimentConfig.parse_file(file)
 
+    def closeEvent(self):
+        self.stop_scan()
+        # self._master.positionersManager.execOnAll(
+        #     lambda p: [p.setPosition(0, axis) for axis in p.axes]
+        # )
+
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
         # self.exp_config = ExperimentConfig.parse_file(EXPERIMENT_JSON_PATH)
         deck_manager = self.locai_context.device.stage.deck_manager
@@ -376,11 +382,6 @@ class DeckLocaiController(LiveUpdatedController):
         if axis != "Z":
             self.__logger.debug(f"Homing axis {axis}")
             self._master.positionersManager[positionerName].doHome(axis)
-
-    def closeEvent(self):
-        self._master.positionersManager.execOnAll(
-            lambda p: [p.setPosition(0, axis) for axis in p.axes]
-        )
 
     def getPos(self):
         return self._master.positionersManager.execOnAll(lambda p: p.position)
