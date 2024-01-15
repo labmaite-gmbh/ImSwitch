@@ -82,6 +82,7 @@ class ViewSetupInfo(SetupInfo):
     - ``LED`` (LED control widget)
     - ``Deck`` (Deck control widget)
     - ``DeckLocai`` (DeckLocai control widget)
+    - ``LabmaiteDeck`` (LabmaiteDeck control widget)
     - ``OpentronsDeck`` (OpentronsDeck control widget)
     - ``Positioner`` (positioners widget)
     - ``StandaPositioner`` (Standa positioners widget)

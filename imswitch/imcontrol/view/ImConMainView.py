@@ -101,6 +101,7 @@ class ImConMainView(QtWidgets.QMainWindow):
             'WellPlate': _DockInfo(name='Wellplate Tool', yPosition=1),
             'DeckScan': _DockInfo(name="Scanner", yPosition=0),
             'DeckLocai': _DockInfo(name="Experiment Tool", yPosition=0),
+            'LabmaiteDeck': _DockInfo(name="Experiment Tool", yPosition=0),
             'Deck': _DockInfo(name="Deck Tool", yPosition=0),
             'OpentronsDeck': _DockInfo(name="OpentronsDeck Tool", yPosition=1),
             'OpentronsDeckScan': _DockInfo(name="OpentronsDeck Scanner", yPosition=1),

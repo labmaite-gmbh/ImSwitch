@@ -7,11 +7,11 @@ from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets
 from functools import partial
 
-from locai_app.impl.deck.sd_deck_manager import SdDeckManager
+from locai_app.impl.deck.sd_deck_manager import DeckManager
 from .basewidgets import Widget
 
 
-class DeckLocaiWidget(Widget):
+class LabmaiteDeckWidget(Widget):
     """ Widget in control of the piezo movement. """
     sigStepUpClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigStepDownClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -187,7 +187,7 @@ class DeckLocaiWidget(Widget):
         self.main_grid_layout.addWidget(self._wells_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
-    def initialize_deck(self, deck_manager: SdDeckManager, options=[(1, 0, 1, 2), (1, 2, 1, 2)]):
+    def initialize_deck(self, deck_manager: DeckManager, options=[(1, 0, 1, 2), (1, 2, 1, 2)]):
         self._deck_dict = deck_manager.deck_layout
         self._labware_dict = deck_manager.labwares
         self._deck_group_box = QtWidgets.QGroupBox("Deck layout")
