@@ -179,36 +179,75 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanInfo.setText(formated_info)
         self._widget.ScanInfo.setHidden(False)
 
-    def format_info(self, info: dict):
-        # TODO: improve, use pydantic model
-        exp_time = f"Experiment started at {info['start_time']}" if hasattr(info, "start_time") else ""
-        scan_info = f"STATUS: {info['experiment_status']}\t{exp_time}\n" \
-                    f"SCAN {info['scan_info'].status.value} started at {info['scan_info'].current_scan_start_date}\n" \
-                    f"\tRound: {info['scan_info'].current_scan_number + 1}/{self.exp_config.scan_params.number_scans}\n" \
-                    f"\tSlot: {info['scan_info'].current_slot}, Well: {info['scan_info'].current_well}\n" \
-                    f"\tPosition: ({info['position'].x:.2f}, {info['position'].y:.2f}, {info['position'].z:.3f})\n\n" \
-                    f"\tRemaining: {info['estimated_remaining_time']} \n\tNext in: {info['next_scan_time']}\n\n"
-        light_sources_intensity = f"Light sources: {info['light_sources_intensity']}\n"
-        # f" Index: {info['scan_info'].current_pos_index}" \
-        if info['fluidics_info'] and 'fluidics' in self.exp_context.modules:
-            fluidics_info = f"FLUIDICS: Current pressure = {info['fluidics_info'].pressure}\n" \
-                            f"\tCurrent flow rate = {info['fluidics_info'].flow_rate}" \
-                            f"\tValue = {info['fluidics_info'].status.value}\n" \
-                            f"\tAction {info['fluidics_info'].current_action_number}:\n"
-            action = info['fluidics_info'].current_action
+    def format_info_scan(self, info):
+        if info.scan_info is not None:
+            current_scan = info.scan_info.current_scan_number + 1
+            date_format = "%Y-%m-%d %H:%M:%S"
+            text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
+            if info.scan_info.status != ScanState.INITIALIZING:
+                text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
+                              f"  Slot:\t\t{info.scan_info.current_slot}\n" \
+                              f"  Well:\t\t{info.scan_info.current_well}\n" \
+                              f"  Position:\t({info.pos_info.x:.2f}, {info.pos_info.y:.2f}, {info.pos_info.z:.3f})\n"
+            else:
+                text = text + f"  Start:\t\t---\n" \
+                              f"  Slot:\t\t---\n" \
+                              f"  Well:\t\t---\n" \
+                              f"  Position:\t---\n"
+            if info.scan_info.status == ScanState.WAITING:
+                text = text + f"  Next:\t\t{'NotImplementedYet'}\n"
+            else:
+                text = text + f"  Next:\t\t---\n"
         else:
-            fluidics_info = '\n\n\n'
-            action = None
-        if action is not None:
-            action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
-                          f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
-            reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})" if action.reservoir is not None else "\n\n"
-        else:
-            action_info = "\n\n"
-            reservoir_info = "\n\n"
-        event_info = f"EVENT: {info['event']}\n"
+            text = f"SCAN - {ScanState.INITIALIZING}\n"
+        return text
 
-        return scan_info + light_sources_intensity + fluidics_info + action_info + reservoir_info + event_info
+    def format_fluid_info(self, info):
+        if info.fluid_info is None:
+            return ''
+        fluid_text = f"FLUIDICS - {info.fluid_info.status.value}\n"
+        act = info.fluid_info.current_action
+        if act is not None:
+            action_text = f"  Mux Channel:\t{act.mux_group_channel}({act.ob1_channel}) (Slot: {act.slot_number})\n" \
+                          f"  Flow Rate:\t{act.flow_rate} μl/min\n" \
+                          f"  Duration:\t{act.duration_seconds} seconds\n" \
+                          f"  Reservoir:\t{act.reservoir.reagent_id}@{act.reservoir.mux_channel}({act.reservoir.ob1_channel})\n"
+        else:
+            action_text = f"  Mux Channel:\t---\n" \
+                          f"  Flow Rate:\t0 μl/min\n" \
+                          f"  Duration:\t---\n" \
+                          f"  Reservoir:\t---\n"
+        if info.fluid_info.mux_in:
+            action_text = action_text + f"  Current Mux in:\t{info.fluid_info.mux_in}\n"
+        else:
+            action_text = action_text + f"  Current Mux in:\t---\n"
+        if info.fluid_info.mux_out:
+            action_text = action_text + f"  Current Mux out:\t{info.fluid_info.mux_out}\n"
+        else:
+            action_text = action_text + f"  Current Mux out:\t---\n"
+        return fluid_text + action_text
+
+    def format_info(self, info: ExperimentInfo):
+        date_format = "%Y-%m-%d %H:%M:%S"
+        general_info = f"STATUS: {info.experiment_status.value}\n" \
+                       f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
+                       f"  Estimated left:\t{info.estimated_remaining_time}\n"
+        scan_text = self.format_info_scan(info)
+        fluid_info = self.format_fluid_info(info)
+        # # f" Index: {info.scan_info.current_pos_index}" \
+        # fluidics_info = f"FLUIDICS: {info.fluid_info.status.value}\n" \
+        #                 f"\tAction {info.fluid_info.current_action_number}:\n"
+        # action = info.fluid_info.current_action
+        # if action is not None:
+        #     action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
+        #                   f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
+        #     reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})\n"
+        # else:
+        #     action_info = ""
+        #     reservoir_info = ""
+        # # event_info = f"EVENT: {info.event}\n"
+        # return scan_info + fluidics_info + action_info + reservoir_info
+        return general_info + scan_text + fluid_info
 
     def value_light_changed(self, light_source, value):
         try:
@@ -272,6 +311,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.__logger.debug(f"No file selected. {e}")
 
     def get_scan_info(self, info_dict):
+        # self.exp_context
         print(f"Info dict: {info_dict}")
         return
 
@@ -308,7 +348,9 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
+        # self._widget.update_scan_list(ExperimentConfig)
 
+    # @APIExport(runOnUIThread=True)
     def go_to_position_in_list(self, row):
         positioner = self.exp_context.device.stage
         well = self.scan_list[row].well
@@ -327,6 +369,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
         self.exp_config.remove_pos_by_index(row)
+
         # TODO: delete point from ExperimentConfig.
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
@@ -358,6 +401,7 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def update_row_from_point(self, row: int, point: Point):
         positioner = self.exp_context.device.stage
+
         if row == 0:
             self.relative_focal_plane = point.z
             self.propagate_relative_focus()
@@ -365,6 +409,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             if self.relative_focal_plane is None:
                 self.relative_focal_plane = self.scan_list[0].position_z
             self.scan_list[row].relative_focus_z = (point.z - self.relative_focal_plane)
+
+        self.scan_list[row].point = point  # TODO: this one modifies the exp_config as intended.
         self.scan_list[row].position_x = point.x
         self.scan_list[row].position_y = point.y
         self.scan_list[row].position_z = point.z
