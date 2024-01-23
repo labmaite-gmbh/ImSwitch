@@ -5,23 +5,23 @@ import time
 from functools import partial
 from typing import Union, Dict, Tuple, List, Optional
 
-from imswitch.imcommon.model import initLogger, APIExport
-from imswitch.imcontrol.view import guitools as guitools
+from ImSwitch.imswitch.imcommon.model import initLogger, APIExport
+from ImSwitch.imswitch.imcontrol.view import guitools as guitools
+from locai_app.exp_control.common.shared_context import ScanState
 
 from ..basecontrollers import LiveUpdatedController
 from locai.utils.scan_list import ScanPoint
 
 os.environ["DEBUG"] = "1"
-from locai_app.generics import Point
+from locai_app.generics import Point, ROOT_FOLDER as ROOT_LOCAI_FOLDER
 from config.config_definitions import ExperimentConfig
-from hardware_api.impl.gx.model_impl.gx_camera import GxCamera
 
-from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext
+from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentInfo
 from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
 from locai_app.impl.btig_a import create_device, BTIGDevice, CfgBTIGDevice
 
-DEVICE: str = "UC2_INVESTIGATOR"
-DEVICE_: str = "BTIG_A"
+# DEVICE: str = "UC2_INVESTIGATOR"
+DEVICE: str = "BTIG_A"
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -32,22 +32,25 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # DEVICE_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_device_config.json"
-DEVICE_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_device_config.json"
+# DEVICE_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_device_config.json"
+DEVICE_JSON_PATH = os.path.join(ROOT_LOCAI_FOLDER, 'config', 'locai_device_config_TEST.json')
 # EXPERIMENT_JSON_PATH = r"C:\Users\hardw\Documents\projects\locai-impl\config\locai_experiment_config.json"
-EXPERIMENT_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_experiment_config.json"
+# EXPERIMENT_JSON_PATH = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl\config\locai_experiment_config.json"
+EXPERIMENT_JSON_PATH = os.path.join(ROOT_LOCAI_FOLDER, 'config', 'updated_locai_experiment_config_TEST.json')
 
 from hardware_api.core.abcs import Camera
-from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
-from imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
+from ImSwitch.imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
+# from ImSwitch.imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
 from ...model.managers.detectors.GXPIPYManager import GXPIPYManager
 
 
 class CameraWrapper(Camera):
-    camera_: Union[MockCameraTIS, CameraGXIPY]
+    # camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
+    metadata: dict = {}
 
     def capture(self):
-        return self.camera.getLatestFrame()
+        return self.camera.getLatestFrame(), self.metadata
 
     def stream_switch(self, stream: bool):
         if stream:
@@ -105,33 +108,80 @@ class LabmaiteDeckController(LiveUpdatedController):
         device.stage.home()
         return device
 
-    def update_scan_info(self, dict_info):
-        formated_info = self.format_info(dict_info)
-        self._widget.ScanInfo.setText(formated_info)
+    def update_scan_info(self, dict_info: ExperimentInfo):
+        formatted_info = self.format_info(dict_info)
+        self._widget.ScanInfo.setText(formatted_info)
         self._widget.ScanInfo.setHidden(False)
 
-    def format_info(self, info):
-        exp_time = f"Experiment started at {info['start_time']}" if hasattr(info, "start_time") else ""
-        scan_info = f"STATUS: {info['experiment_status']}\t{exp_time}\n" \
-                    f"SCAN {info['scan_info'].status.value} started at {'NotImplementedYet'}\n" \
-                    f"\tRound: {info['scan_info'].current_scan_number}/{self.exp_config.scan_params.number_scans}\n" \
-                    f"\tSlot: {info['scan_info'].current_slot}, Well: {info['scan_info'].current_well}\n" \
-                    f"\tPosition: ({info['position'].x:.2f}, {info['position'].y:.2f}, {info['position'].z:.3f})\n\n" \
-                    f"\tRemaining: {info['estimated_remaining_time']} \n\tNext in: {'NotImplementedYet'}\n\n"
-        # f" Index: {info['scan_info'].current_pos_index}" \
-        fluidics_info = f"FLUIDICS: {info['fluidics_info'].status.value}\n" \
-                        f"\tAction {info['fluidics_info'].current_action_number}:\n"
-        action = info['fluidics_info'].current_action
-        if action is not None:
-            action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
-                          f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
-            reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})" if action.reservoir is not None else "\n\n"
+    def format_info_scan(self, info):
+        if info.scan_info is not None:
+            current_scan = info.scan_info.current_scan_number + 1
+            date_format = "%Y-%m-%d %H:%M:%S"
+            text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
+            if info.scan_info.status != ScanState.INITIALIZING:
+                text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
+                              f"  Slot:\t\t{info.scan_info.current_slot}\n" \
+                              f"  Well:\t\t{info.scan_info.current_well}\n" \
+                              f"  Position:\t({info.pos_info.x:.2f}, {info.pos_info.y:.2f}, {info.pos_info.z:.3f})\n"
+            else:
+                text = text + f"  Start:\t\t---\n" \
+                              f"  Slot:\t\t---\n" \
+                              f"  Well:\t\t---\n" \
+                              f"  Position:\t---\n"
+            if info.scan_info.status == ScanState.WAITING:
+                text = text + f"  Next:\t\t{'NotImplementedYet'}\n"
+            else:
+                text = text + f"  Next:\t\t---\n"
         else:
-            action_info = "\n\n"
-            reservoir_info = "\n\n"
-        event_info = f"EVENT: {info['event']}\n"
+            text = f"SCAN - {ScanState.INITIALIZING}\n"
+        return text
 
-        return scan_info + fluidics_info + action_info + reservoir_info + event_info
+    def format_fluid_info(self, info):
+        if info.fluid_info is None:
+            return ''
+        fluid_text = f"FLUIDICS - {info.fluid_info.status.value}\n"
+        act = info.fluid_info.current_action
+        if act is not None:
+            action_text = f"  Mux Channel:\t{act.mux_group_channel}({act.ob1_channel}) (Slot: {act.slot_number})\n" \
+                          f"  Flow Rate:\t{act.flow_rate} μl/min\n" \
+                          f"  Duration:\t{act.duration_seconds} seconds\n" \
+                          f"  Reservoir:\t{act.reservoir.reagent_id}@{act.reservoir.mux_channel}({act.reservoir.ob1_channel})\n"
+        else:
+            action_text = f"  Mux Channel:\t---\n" \
+                          f"  Flow Rate:\t0 μl/min\n" \
+                          f"  Duration:\t---\n" \
+                          f"  Reservoir:\t---\n"
+        if info.fluid_info.mux_in:
+            action_text = action_text + f"  Current Mux in:\t{info.fluid_info.mux_in}\n"
+        else:
+            action_text = action_text + f"  Current Mux in:\t---\n"
+        if info.fluid_info.mux_out:
+            action_text = action_text + f"  Current Mux out:\t{info.fluid_info.mux_out}\n"
+        else:
+            action_text = action_text + f"  Current Mux out:\t---\n"
+        return fluid_text + action_text
+
+    def format_info(self, info: ExperimentInfo):
+        date_format = "%Y-%m-%d %H:%M:%S"
+        general_info = f"STATUS: {info.experiment_status.value}\n" \
+                       f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
+                       f"  Estimated left:\t{info.estimated_remaining_time}\n"
+        scan_text = self.format_info_scan(info)
+        fluid_info = self.format_fluid_info(info)
+        # # f" Index: {info.scan_info.current_pos_index}" \
+        # fluidics_info = f"FLUIDICS: {info.fluid_info.status.value}\n" \
+        #                 f"\tAction {info.fluid_info.current_action_number}:\n"
+        # action = info.fluid_info.current_action
+        # if action is not None:
+        #     action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
+        #                   f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
+        #     reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})\n"
+        # else:
+        #     action_info = ""
+        #     reservoir_info = ""
+        # # event_info = f"EVENT: {info.event}\n"
+        # return scan_info + fluidics_info + action_info + reservoir_info
+        return general_info + scan_text + fluid_info
 
     def valueLEDChanged(self, value):
         self.LEDValue = value
