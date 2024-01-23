@@ -1,17 +1,15 @@
-import csv
-from typing import Dict
-
 from PyQt5.QtCore import Qt
+
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 
 from locai_app.impl.deck.sd_deck_manager import DeckManager
-from .basewidgets import Widget
+from .basewidgets import Widget, NapariHybridWidget
 
 
-class LabmaiteDeckWidget(Widget):
+class LabmaiteDeckWidget(NapariHybridWidget):
     """ Widget in control of the piezo movement. """
     sigStepUpClicked = QtCore.Signal(str, str)  # (positionerName, axis)
     sigStepDownClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -28,15 +26,20 @@ class LabmaiteDeckWidget(Widget):
     sigZeroZAxisClicked = QtCore.Signal(float)
 
     sigSliderLEDValueChanged = QtCore.Signal(float)  # (value)
+    sigSliderValueChanged = QtCore.Signal(str, float)  # (value)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    sigZScanStart = QtCore.Signal(bool)  # (value)
+    sigZScanStop = QtCore.Signal(bool)  # (value)
+
+    def __post_init__(self):
+        # super().__init__(*args, **kwargs)
 
         self.numPositioners = 0
         self.pars = {}
         self.main_grid_layout = QtWidgets.QGridLayout()
         self.scan_list = TableWidgetDragRows()  # Initialize empty table
         self.info = ""  # TODO: use QLabel...
+        self.layer = None
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
     def update_scan_list(self, scan_list):
@@ -86,7 +89,8 @@ class LabmaiteDeckWidget(Widget):
             if hasSpeed:
                 self.pars['Speed' + parNameSuffix] = QtWidgets.QLabel('Speed:')
                 self.pars['Speed' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
-                self.pars['SpeedEdit' + parNameSuffix] = QtWidgets.QLineEdit('12') if axis != "Z" else QtWidgets.QLineEdit('8')
+                self.pars['SpeedEdit' + parNameSuffix] = QtWidgets.QLineEdit(
+                    '12') if axis != "Z" else QtWidgets.QLineEdit('8')
 
                 layout.addWidget(self.pars['Speed' + parNameSuffix], self.numPositioners, 9)
                 layout.addWidget(self.pars['SpeedEdit' + parNameSuffix], self.numPositioners, 10)
@@ -134,13 +138,18 @@ class LabmaiteDeckWidget(Widget):
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
         self.beacons_selected_well.setText(f"{well}")
 
-    def select_labware(self, slot, options=(1, 1, 2, 1)):
+    def select_labware(self, slot=None, options=(1, 0, 3, 3)):
+        if slot is None:
+            slot = self.slots_combobox.currentText()
+        self._select_labware(str(slot), options)
+        # self.change_slot_color(slot) # TODO: this causes an infinite recursion...
+
+    def _select_labware(self, slot, options=(1, 0, 3, 3)):
         self.current_slot = slot
         if hasattr(self, "_wells_group_box"):
             self.main_grid_layout.removeWidget(self._wells_group_box)
         self._wells_group_box = QtWidgets.QGroupBox(f"{self._labware_dict[slot]}")
         layout = QtWidgets.QGridLayout()
-
         labware = self._labware_dict[slot]
         # Create dictionary to hold buttons
         self.wells = {}
@@ -172,86 +181,94 @@ class LabmaiteDeckWidget(Widget):
             # self.wells[corrds].setStyleSheet("background-color: none")
             # Add button/label to layout
             layout.addWidget(self.wells[corrds], pos[0], pos[1])
-
-        # Change color of selected labware
-        for slot_id, btn in self.deck_slots.items():
-            if isinstance(btn, guitools.BetterPushButton):
-                if slot_id == slot:
-                    btn.setStyleSheet("background-color: blue; font-size: 14px")
-                else:
-                    btn.setStyleSheet("background-color: grey; font-size: 14px")
-        # self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-        #                                     QtWidgets.QSizePolicy.Expanding)
+        self._wells_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                            QtWidgets.QSizePolicy.Expanding)
         # self._wells_group_box.setMinimumSize(100,100)
         self._wells_group_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._wells_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
-    def initialize_deck(self, deck_manager: DeckManager, options=[(1, 0, 1, 2), (1, 2, 1, 2)]):
-        self._deck_dict = deck_manager.deck_layout
-        self._labware_dict = deck_manager.labwares
-        self._deck_group_box = QtWidgets.QGroupBox("Deck layout")
-        layout = QtWidgets.QHBoxLayout()
+    def init_z_scan(self, options=[(3, 3, 1, 2)]):
+        self._z_scan_box = QtWidgets.QGroupBox("Z-Scan:")
+        layout = QtWidgets.QGridLayout()
+        well_base_label = QtWidgets.QLabel("Well base:")
+        self.well_base_widget = QtWidgets.QLineEdit('5.182')
+        self.well_base_widget.setMaximumWidth(60)
+        well_top_label = QtWidgets.QLabel("Well top:")
+        self.well_top_widget = QtWidgets.QLineEdit('0.00')
+        self.well_top_widget.setMaximumWidth(60)
+        self.z_scan_step_label = QtWidgets.QLabel("Step:")
+        self.z_scan_step_widget = QtWidgets.QLineEdit('1.00')
+        self.z_scan_step_widget.setMaximumWidth(60)
+        self.z_scan_preview_button = guitools.BetterPushButton("Preview")  # QtWidgets.QPushButton(corrds)
+        self.z_scan_preview_button.setStyleSheet("font-size: 14px")
+        self.z_scan_preview_button.setMinimumWidth(75)
+        # self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
+        layout.addWidget(well_base_label, 0, 0, 1, 1)
+        layout.addWidget(self.well_base_widget, 0, 1, 1, 1)
+        layout.addWidget(well_top_label, 1, 0, 1, 1)
+        layout.addWidget(self.well_top_widget, 1, 1, 1, 1)
+        layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
+        layout.addWidget(self.z_scan_step_widget, 0, 3, 1, 1)
+        layout.addWidget(self.z_scan_preview_button, 1, 2, 1, 2)
 
-        # Create dictionary to hold buttons
-        slots = [slot.id for slot in deck_manager.deck_layout.locations.orderedSlots]
-        used_slots = list(deck_manager.labwares.keys())
-        self.deck_slots = {}
+        # layout.addWidget(self.z_scan_stop_button)
+        self._z_scan_box.setLayout(layout)
 
-        # Create dictionary to store deck slots names (button texts)
-        slots_buttons = {s: (0, i + 2) for i, s in enumerate(slots)}
-        for slot_id, pos in slots_buttons.items():
-            if slot_id in used_slots:
-                # Do button if slot contains labware
-                self.deck_slots[slot_id] = guitools.BetterPushButton(slot_id)  # QtWidgets.QPushButton(slot_id)
-                # self.deck_slots[slot_id].setFixedSize(25, 20)
-                self.deck_slots[slot_id].setMaximumSize(30, 25)
-                self.deck_slots[slot_id].setStyleSheet("QPushButton"
-                                                       "{"
-                                                       "background-color : grey; font-size: 14px"
-                                                       "}"
-                                                       "QPushButton::pressed"
-                                                       "{"
-                                                       "background-color : red; font-size: 14px"
-                                                       "}"
-                                                       )
-            else:
-                self.deck_slots[slot_id] = QtWidgets.QLabel(slot_id)  # QtWidgets.QPushButton(slot_id)
-                # self.deck_slots[slot_id].setFixedSize(25, 20)
-                self.deck_slots[slot_id].setMaximumSize(30, 25)
-                self.deck_slots[slot_id].setStyleSheet("background-color: None; font-size: 14px")
-            layout.addWidget(self.deck_slots[slot_id])
-        self._deck_group_box.setMaximumHeight(120)
-        self._deck_group_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                           QtWidgets.QSizePolicy.Expanding)
-        self._deck_group_box.setLayout(layout)
-        self.select_labware(used_slots[0], options[0])
-        self.main_grid_layout.addWidget(self._deck_group_box, *options[1])
+        self.main_grid_layout.addWidget(self._z_scan_box, *options)
         self.setLayout(self.main_grid_layout)
+
+    def set_preview(self, im, colormap="gray", name="", pixelsize=(1, 1, 1), translation=(0, 0, 0)):
+        if len(im.shape) == 2:
+            translation = (translation[0], translation[1])
+        if self.layer is None or name not in self.viewer.layers:
+            self.layer = self.viewer.add_image(im, rgb=False, colormap=colormap,
+                                               scale=pixelsize, translate=translation,
+                                               name=name, blending='additive')
+        self.layer.data = im
+
+    def init_light_sources(self, light_sources, options=(4, 3, 2, 1)):
+        # LEDs grid
+        self.LEDWidget = QtWidgets.QGroupBox("Lights: [%]")
+        self.LEDWidget.setMaximumWidth(120)
+        led_layout = QtWidgets.QGridLayout()
+
+        self.light_sources_widgets = {}
+        self.light_sources_signals = {}
+        for light in light_sources:
+            LEDWidget = QtWidgets.QSpinBox()
+            LEDWidget.setMaximum(100)
+            LEDWidget.setMinimum(0)
+            LEDWidget.setMaximumWidth(60)
+            # LED_spinbox.valueChanged.connect(LED_spinbox, self.led_value_change)
+            ledName = f'{light.config.readable_name}'
+            nameLabel = QtWidgets.QLabel(ledName)
+            led_layout.addWidget(nameLabel, len(self.light_sources_widgets), 0)
+            led_layout.addWidget(LEDWidget, len(self.light_sources_widgets), 1)
+            self.light_sources_widgets[ledName] = LEDWidget
+            self.light_sources_signals[ledName] = QtCore.Signal(float)
+
+            LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
+
+        self.LEDWidget.setLayout(led_layout)
+        self.main_grid_layout.addWidget(self.LEDWidget, *options)
+
+    def light_intensity_change(self, ledName):
+        self.sigSliderValueChanged.emit(ledName, self.light_sources_widgets[ledName].value())
 
     def init_light_source(self, options=(3, 0, 1, 1)):
         # LED
+        self.LEDWidget = QtWidgets.QGroupBox()
 
         led_layout = QtWidgets.QHBoxLayout()
-        self.LEDWidget = QtWidgets.QGroupBox()
-        # valueDecimalsLED = 0
-        # valueRangeLED = (0, 100)
-        # tickIntervalLED = 1
-        # singleStepLED = 1
-        # self.sliderLED, self.LabelLED = self.setupSliderGui('Intensity (LED):', valueDecimalsLED, valueRangeLED,
-        #                                                     tickIntervalLED, singleStepLED)
         self.LabelLED = QtWidgets.QLabel("LED Intensity [mA]: ")
-        # self.sliderLED.valueChanged.connect(
-        #     lambda value: self.sigSliderLEDValueChanged.emit(value)
-        # )
-        # led_layout.addWidget(self.ValueLED)
-        # led_layout.addWidget(self.sliderLED, 3)
         self.LED_spinbox = QtWidgets.QSpinBox()
         self.LED_spinbox.setMaximum(1000)
         self.LED_spinbox.setMinimum(0)
         led_layout.addWidget(self.LabelLED)
         led_layout.addWidget(self.LED_spinbox)
         self.LED_spinbox.valueChanged.connect(self.led_value_change)
+
         self.LEDWidget.setLayout(led_layout)
         self.main_grid_layout.addWidget(self.LEDWidget, *options)
 
@@ -271,35 +288,40 @@ class LabmaiteDeckWidget(Widget):
         slider.setValue(0)
         return slider, ScanLabel
 
-    def init_experiment_buttons(self, options=(7, 0, 1, 1)):
+    def init_experiment_buttons(self, options=(4, 4, 1, 1)):
         exp_buttons_layout = QtWidgets.QGridLayout()
         self.ScanActionsWidget = QtWidgets.QGroupBox("Scan List Actions")
-        self.ScanActionsWidget.setMinimumWidth(200)
         self.ScanSaveButton = guitools.BetterPushButton('Save')
         self.ScanSaveButton.setStyleSheet("font-size: 14px")
         self.ScanSaveButton.setFixedHeight(35)
-        self.ScanSaveButton.setMinimumWidth(60)
+        self.ScanSaveButton.setMinimumWidth(40)
         self.ScanSaveButton.setCheckable(False)
         self.ScanSaveButton.toggled.connect(self.sigScanSave)
 
         self.ScanStartButton = guitools.BetterPushButton('Start')
         self.ScanStartButton.setStyleSheet("background-color: black; font-size: 14px")
         self.ScanStartButton.setFixedHeight(35)
-        self.ScanStartButton.setMinimumWidth(60)
+        self.ScanStartButton.setMinimumWidth(40)
         self.ScanStartButton.setCheckable(False)
         self.ScanStartButton.toggled.connect(self.sigScanStart)
 
         self.ScanStopButton = guitools.BetterPushButton('Stop')
         self.ScanStopButton.setStyleSheet("background-color: gray; font-size: 14px")
         self.ScanStopButton.setFixedHeight(35)
-        self.ScanStopButton.setMinimumWidth(60)
+        self.ScanStopButton.setMinimumWidth(40)
         self.ScanStopButton.setCheckable(False)
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
 
-        exp_buttons_layout.addWidget(self.ScanSaveButton, 0, 0, 1, 1)
-        exp_buttons_layout.addWidget(self.ScanStartButton, 0, 1, 1, 1)
-        exp_buttons_layout.addWidget(self.ScanStopButton, 0, 2, 1, 1)
+        self.adjust_all_focus_button = guitools.BetterPushButton('Focus All')
+        self.adjust_all_focus_button.setStyleSheet("font-size: 14px")
+        self.adjust_all_focus_button.setFixedHeight(35)
+        self.adjust_all_focus_button.setMinimumWidth(40)
+
+        exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.ScanStopButton, 0, 1, 1, 1)
+        exp_buttons_layout.addWidget(self.adjust_all_focus_button, 1, 1, 1, 1)
+        exp_buttons_layout.addWidget(self.ScanSaveButton, 1, 0, 1, 1)
         self.ScanActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)
         # self.ScanActionsWidget.setMaximumHeight(160)
@@ -315,15 +337,45 @@ class LabmaiteDeckWidget(Widget):
         self.main_grid_layout.addWidget(self.ScanInfo_widget, *options)
         self.setLayout(self.main_grid_layout)
 
+    def initialize_deck(self, deck_manager: DeckManager, options=[(1, 0, 3, 3), (2, 4, 1, 1)]):
+        self._deck_dict = deck_manager.deck_layout
+        self._labware_dict = deck_manager.labwares
+        self._deck_group_box = QtWidgets.QGroupBox("")
+        self._deck_group_box.setMinimumHeight(40)
+        layout = QtWidgets.QHBoxLayout()
+
+        # Create dictionary to hold buttons
+        slots = [slot.id for slot in deck_manager.deck_layout.locations.orderedSlots]
+
+        used_slots = list(deck_manager.labwares.keys())
+        self.slot_label = QtWidgets.QLabel("Slot: ")
+        self.slot_label.setMinimumWidth(40)
+        self.slot_label.setMinimumHeight(35)
+        self.slot_label.setMaximumHeight(40)
+        self.slots_combobox = QtWidgets.QComboBox(self)
+        self.slots_combobox.setMinimumWidth(40)
+        self.slots_combobox.setMinimumHeight(35)
+        self.slots_combobox.setMaximumHeight(40)
+        [self.slots_combobox.addItem(f"{s}") for s in used_slots]
+        layout.addWidget(self.slot_label)
+        layout.addWidget(self.slots_combobox)
+        self._deck_group_box.setLayout(layout)
+        self.setLayout(layout)
+        self.main_grid_layout.addWidget(self._deck_group_box, *options[1])
+        self.setLayout(self.main_grid_layout)
+
     def init_home_button(self, options=(2, 2, 1, 1)):
         self.home_button_widget = QtWidgets.QGroupBox("Stage")
+        self.home_button_widget.setMinimumWidth(45)
+        self.home_button_widget.setMinimumHeight(50)
+        self.home_button_widget.setMaximumHeight(60)
         home_button_layout = QtWidgets.QGridLayout()
         self.home_button = guitools.BetterPushButton(text="HOME")  # QtWidgets.QPushButton(corrds)
         self.home_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                        QtWidgets.QSizePolicy.Expanding)
-        self.home_button.setMinimumWidth(50)
-        self.home_button.setMinimumHeight(50)
-        self.home_button.setMaximumHeight(100)
+        self.home_button.setMinimumWidth(35)
+        self.home_button.setMinimumHeight(30)
+        self.home_button.setMaximumHeight(35)
         self.home_button.setStyleSheet("background-color: black; font-size: 14px")
         home_button_layout.addWidget(self.home_button)
         self.home_button_widget.setLayout(home_button_layout)
@@ -340,7 +392,7 @@ class LabmaiteDeckWidget(Widget):
         # }
         self.ScanInfo.setText(dict_info["experiment_status"])
 
-    def init_well_action(self, options=(3, 0, 1, 1)):
+    def init_well_action(self, options=(1, 3, 2, 1)):
         self.well_action_widget = QtWidgets.QGroupBox("Selected well")
         well_action_layout = QtWidgets.QGridLayout()
         self.beacons_selected_well = QtWidgets.QLabel("<Well>")
@@ -348,7 +400,8 @@ class LabmaiteDeckWidget(Widget):
 
         self.goto_btn = guitools.BetterPushButton('GO TO')
         self.goto_btn.setMaximumHeight(50)
-        well_action_layout.addWidget(self.goto_btn, 0, 1, 1, 1)
+        self.goto_btn.setMaximumWidth(40)
+        well_action_layout.addWidget(self.goto_btn, 1, 0, 1, 1)
 
         self.well_action_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                               QtWidgets.QSizePolicy.Expanding)
@@ -364,10 +417,11 @@ class LabmaiteDeckWidget(Widget):
         buttons_layout = QtWidgets.QHBoxLayout()
         self.prevButton = guitools.BetterPushButton('Previous')
         self.adjustFocusButton = guitools.BetterPushButton('Focus')
-        self.focusAllButton = guitools.BetterPushButton('Focus All')
         self.nextButton = guitools.BetterPushButton('Next')
         self.prevButton.clicked.connect(self.prevRow)
+        self.prevButton.hide()
         self.nextButton.clicked.connect(self.nextRow)
+        self.nextButton.hide()
         buttons_layout.addWidget(self.prevButton)
         buttons_layout.addWidget(self.nextButton)
 
@@ -377,7 +431,7 @@ class LabmaiteDeckWidget(Widget):
         self.scan_list.itemPressed.connect(self.onSelectionChanged)
         # self.scan_list.itemSelectionChanged.connect(self.onSelectionChanged)
         # self.scan_list.setMaximumHeight(500)
-        self.scan_list.setMinimumHeight(350)
+        self.scan_list.setMinimumHeight(235)
         self.scan_list.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Expanding)
 
@@ -500,7 +554,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigAdjustPositionClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
 
-    from locai.utils.scan_list import ScanPoint
+    from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -556,13 +610,13 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.set_item(row=row_id, col=self.columns.index("Well"), item=current_point.well)
         self.set_item(row=row_id, col=self.columns.index("Index"), item=round(current_point.position_in_well_index))
         self.set_item(row=row_id, col=self.columns.index("Offset"),
-                      item=(round(current_point.offset_from_center_x),
-                            round(current_point.offset_from_center_y)))
-        self.set_item(row=row_id, col=self.columns.index("Z_focus"), item=round(current_point.relative_focus_z))
+                      item=(round(current_point.offset_from_center_x, 1),
+                            round(current_point.offset_from_center_y, 1)))
+        self.set_item(row=row_id, col=self.columns.index("Z_focus"), item=round(current_point.relative_focus_z, 2))
         self.set_item(row=row_id, col=self.columns.index("Absolute"),
-                      item=(round(current_point.position_x),
-                            round(current_point.position_y),
-                            round(current_point.position_z)))
+                      item=(round(current_point.position_x, 2),
+                            round(current_point.position_y, 2),
+                            round(current_point.position_z, 2)))
 
     def onHorizontalHeaderClicked(self, point):
         # https://www.programcreek.com/python/?code=danigargu%2Fheap-viewer%2Fheap-viewer-master%2Fheap_viewer%2Fwidgets%2Fstructs.py

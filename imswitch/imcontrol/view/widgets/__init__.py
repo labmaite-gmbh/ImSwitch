@@ -13,12 +13,12 @@ from .STORMReconWidget import STORMReconWidget
 from .HoliSheetWidget import HoliSheetWidget
 from .LEDMatrixWidget import LEDMatrixWidget
 from .WellPlateWidget import WellPlateWidget
-from .DeckWidget import DeckWidget
+# from .DeckWidget import DeckWidget
 # from .DeckLocaiWidget import DeckLocaiWidget
 from .LabmaiteDeckWidget import LabmaiteDeckWidget
-from .DeckScanWidget import DeckScanWidget
-from .OpentronsDeckWidget import OpentronsDeckWidget
-from .OpentronsDeckScanWidget import OpentronsDeckScanWidget
+# from .DeckScanWidget import DeckScanWidget
+# from .OpentronsDeckWidget import OpentronsDeckWidget
+# from .OpentronsDeckScanWidget import OpentronsDeckScanWidget
 from .FocusLockWidget import FocusLockWidget
 from .ImageWidget import ImageWidget
 from .LaserWidget import LaserWidget
