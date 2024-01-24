@@ -10,10 +10,11 @@ import numpy as np
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
+from locai_app.generics import Point, ROOT_FOLDER
+from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo, \
+    ExperimentModules
 from ImSwitch.imswitch.imcommon.model import initLogger, APIExport
 from ImSwitch.imswitch.imcontrol.view import guitools as guitools
-from ImSwitch.imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
-from ImSwitch.imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
 from ImSwitch.imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
 from ImSwitch.imswitch.imcommon.framework.qt import Thread
 
@@ -26,37 +27,33 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
-PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
+# PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
 
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
-MODULES = ['scan']
+MODULES = [ExperimentModules.SCAN, ExperimentModules.FLUIDICS]
 # DEVICE AND EXPERIMENT:
 DEVICE: str = "UC2_INVESTIGATOR"  # "BTIG_A" or "UC2_INVESTIGATOR"
 if DEVICE == "BTIG_A":
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\locai_device_config.json"])
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\btig_small_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join(
-        [PROJECT_FOLDER, r"\config\updated_locai_experiment_config_TEST_multislot.json"])
+    # DEVICE_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\locai_device_config.json"])
+    DEVICE_JSON_PATH = os.path.join(ROOT_FOLDER, 'config', 'locai_device_config_TEST.json')
+    EXPERIMENT_JSON_PATH = os.path.join(ROOT_FOLDER, 'config', 'updated_locai_experiment_config_TEST.json')
 elif DEVICE == "UC2_INVESTIGATOR":
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\uc2_stage_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\bcall_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\grid_test_repeat.json"])
+    DEVICE_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\uc2_device_config.json"])
+    EXPERIMENT_JSON_PATH_ = os.sep.join([ROOT_FOLDER, r"\config\uc2_stage_experiment_config_TEST.json"])
+    EXPERIMENT_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\bcall_experiment_config_TEST.json"])
+    EXPERIMENT_JSON_PATH_ = os.sep.join([ROOT_FOLDER, r"\config\grid_test_repeat.json"])
 # APPLICATION SPECIFIC FEATURES
 os.environ["APP"] = "BCALL"  # BCALL only for now
 
 from hardware_api.core.abcs import Camera
 from ImSwitch.imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
-from locai_app.generics import Point
 from config.config_definitions import ExperimentConfig
-from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
 
 class CameraWrapper(Camera):
-    camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
 
     def __init__(self, camera: GXPIPYManager):
@@ -184,7 +181,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         if info.scan_info is not None:
             current_scan = info.scan_info.current_scan_number + 1
             text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
-            if info.scan_info.status != ScanState.INITIALIZING:
+            if info.scan_info.status not in [ScanState.INITIALIZING, ScanState.WAITING]:
                 text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
                               f"  Slot:\t\t{info.scan_info.current_slot}\n" \
                               f"  Well:\t\t{info.scan_info.current_well}\n" \
@@ -235,7 +232,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             action_text = action_text + f"  Live flow:\t---\n"
         return fluid_text + action_text
 
-    def format_info(self, info: ExperimentInfo):
+    def format_info(self, info: ExperimentLiveInfo):
         date_format = "%d/%m/%Y %H:%M:%S"
         general_info = f"STATUS: {info.experiment_status.value}\n" \
                        f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
@@ -688,8 +685,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.set_preview(imgs, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
 
     def z_scan_preview(self):
-        from exp_control.imaging.imagers import get_preview_imager
-        from exp_control.scanning.scan_manager import WellPreviewer
+        from locai_app.exp_control.imaging.imagers import get_preview_imager
+        from locai_app.exp_control.scanning.scan_manager import WellPreviewer
 
         z_start = float(self._widget.well_base_widget.text())
         z_end = float(self._widget.well_top_widget.text())
