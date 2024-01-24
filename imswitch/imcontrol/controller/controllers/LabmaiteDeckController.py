@@ -113,10 +113,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanInfo.setText(formatted_info)
         self._widget.ScanInfo.setHidden(False)
 
-    def format_info_scan(self, info):
+    def format_info_scan(self, info, date_format):
         if info.scan_info is not None:
             current_scan = info.scan_info.current_scan_number + 1
-            date_format = "%Y-%m-%d %H:%M:%S"
             text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
             if info.scan_info.status != ScanState.INITIALIZING:
                 text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
@@ -128,8 +127,8 @@ class LabmaiteDeckController(LiveUpdatedController):
                               f"  Slot:\t\t---\n" \
                               f"  Well:\t\t---\n" \
                               f"  Position:\t---\n"
-            if info.scan_info.status == ScanState.WAITING:
-                text = text + f"  Next:\t\t{'NotImplementedYet'}\n"
+            if info.scan_info.status == ScanState.COMPLETED:
+                text = text + f"  Next:\t\t{info.scan_info.next_scan_start_time}\n"
             else:
                 text = text + f"  Next:\t\t---\n"
         else:
@@ -148,39 +147,34 @@ class LabmaiteDeckController(LiveUpdatedController):
                           f"  Reservoir:\t{act.reservoir.reagent_id}@{act.reservoir.mux_channel}({act.reservoir.ob1_channel})\n"
         else:
             action_text = f"  Mux Channel:\t---\n" \
-                          f"  Flow Rate:\t0 μl/min\n" \
+                          f"  Flow Rate:\t---\n" \
                           f"  Duration:\t---\n" \
                           f"  Reservoir:\t---\n"
         if info.fluid_info.mux_in:
-            action_text = action_text + f"  Current Mux in:\t{info.fluid_info.mux_in}\n"
+            action_text = action_text + f"  Mux in:\t\t{info.fluid_info.mux_in}\n"
         else:
-            action_text = action_text + f"  Current Mux in:\t---\n"
+            action_text = action_text + f"  Mux in:\t---\n"
         if info.fluid_info.mux_out:
-            action_text = action_text + f"  Current Mux out:\t{info.fluid_info.mux_out}\n"
+            action_text = action_text + f"  Mux out:\t{info.fluid_info.mux_out}\n"
         else:
-            action_text = action_text + f"  Current Mux out:\t---\n"
+            action_text = action_text + f"  Mux out:\t---\n"
+        if info.fluid_info.pressure:
+            action_text = action_text + f"  Live pressure:\t{info.fluid_info.pressure:.2f} mBar\n"
+        else:
+            action_text = action_text + f"  Live pressure:\t---\n"
+        if info.fluid_info.flow_rate:
+            action_text = action_text + f"  Live flow:\t{info.fluid_info.flow_rate:.2f} μl/min\n"
+        else:
+            action_text = action_text + f"  Live flow:\t---\n"
         return fluid_text + action_text
 
     def format_info(self, info: ExperimentInfo):
-        date_format = "%Y-%m-%d %H:%M:%S"
+        date_format = "%d/%m/%Y %H:%M:%S"
         general_info = f"STATUS: {info.experiment_status.value}\n" \
                        f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
                        f"  Estimated left:\t{info.estimated_remaining_time}\n"
-        scan_text = self.format_info_scan(info)
+        scan_text = self.format_info_scan(info, date_format)
         fluid_info = self.format_fluid_info(info)
-        # # f" Index: {info.scan_info.current_pos_index}" \
-        # fluidics_info = f"FLUIDICS: {info.fluid_info.status.value}\n" \
-        #                 f"\tAction {info.fluid_info.current_action_number}:\n"
-        # action = info.fluid_info.current_action
-        # if action is not None:
-        #     action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
-        #                   f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
-        #     reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})\n"
-        # else:
-        #     action_info = ""
-        #     reservoir_info = ""
-        # # event_info = f"EVENT: {info.event}\n"
-        # return scan_info + fluidics_info + action_info + reservoir_info
         return general_info + scan_text + fluid_info
 
     def valueLEDChanged(self, value):
