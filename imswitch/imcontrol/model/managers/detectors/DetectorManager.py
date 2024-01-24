@@ -49,6 +49,14 @@ class DetectorNumberParameter(DetectorParameter):
 
 
 @dataclass
+class DetectorBooleanParameter(DetectorParameter):
+    """ A detector parameter with a boolean value. """
+
+    value: bool
+    """ The value of the parameter. """
+
+
+@dataclass
 class DetectorListParameter(DetectorParameter):
     """ A detector parameter with a value from a list of options. """
 
@@ -71,7 +79,7 @@ class DetectorManager(SignalInterface):
                  supportedBinnings: List[int], model: str, *,
                  parameters: Optional[Dict[str, DetectorParameter]] = None,
                  actions: Optional[Dict[str, DetectorAction]] = None,
-                 croppable: bool = True, 
+                 croppable: bool = True,
                  isRGB: bool = False) -> None:
         """
         Args:
@@ -101,6 +109,9 @@ class DetectorManager(SignalInterface):
         self.__actions = actions if actions is not None else {}
         self.__croppable = croppable
 
+        self.__flatfieldImage = None
+        self.__isFlatfielding = False
+
         self.__fullShape = fullShape
         self.__supportedBinnings = supportedBinnings
         self.__image = np.array([])
@@ -110,10 +121,10 @@ class DetectorManager(SignalInterface):
         if not detectorInfo.forAcquisition and not detectorInfo.forFocusLock:
             raise ValueError('At least one of forAcquisition and forFocusLock must be set in'
                              ' DetectorInfo.')
-    
-        # set RGB if information is available 
+
+        # set RGB if information is available
         try:
-            isRGB = parameters['isRGB'].value
+            isRGB = self._detectorInfo.managerProperties["isRGB"]  # parameters['isRGB'].value
         except:
             isRGB = False
         self.setRGB(isRGB)
@@ -152,6 +163,9 @@ class DetectorManager(SignalInterface):
             raise ValueError(f'Specified binning value "{binning}" not supported by the detector')
 
         self._binning = binning
+
+    def setFlatfieldImage(self, flatieldImage, setFlatfielding):
+        pass
 
     @property
     def name(self) -> str:
@@ -277,8 +291,11 @@ class DetectorManager(SignalInterface):
         """ Close/cleanup detector. """
         pass
 
+    def recordFlatfieldImage(self, image: np.ndarray) -> np.ndarray:
+        """ Performs flatfield correction on the specified image. """
+        return image
 
-# Copyright (C) 2020-2021 ImSwitch developers
+# Copyright (C) 2020-2023 ImSwitch developers
 # This file is part of ImSwitch.
 #
 # ImSwitch is free software: you can redistribute it and/or modify
