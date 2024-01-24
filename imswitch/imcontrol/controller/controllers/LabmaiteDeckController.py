@@ -8,13 +8,14 @@ from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
 
-from exp_control.scanning.scan_manager import get_array_from_list
-from imswitch.imcommon.model import initLogger, APIExport
-from imswitch.imcontrol.view import guitools as guitools
-from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
-from imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
-from imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
-from imswitch.imcommon.framework.qt import Thread
+from locai_app.exp_control.common.shared_context import ScanState
+from locai_app.exp_control.scanning.scan_manager import get_array_from_list
+from ImSwitch.imswitch.imcommon.model import initLogger, APIExport
+from ImSwitch.imswitch.imcontrol.view import guitools as guitools
+from ImSwitch.imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
+from ImSwitch.imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
+from ImSwitch.imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
+from ImSwitch.imswitch.imcommon.framework.qt import Thread
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -47,7 +48,7 @@ elif DEVICE == "UC2_INVESTIGATOR":
 os.environ["APP"] = "BCALL"  # BCALL only for now
 
 from hardware_api.core.abcs import Camera
-from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
+from ImSwitch.imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
 from locai_app.generics import Point
 from config.config_definitions import ExperimentConfig
 from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext
