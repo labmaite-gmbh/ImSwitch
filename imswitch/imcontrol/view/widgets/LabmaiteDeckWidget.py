@@ -28,8 +28,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigSliderLEDValueChanged = QtCore.Signal(float)  # (value)
     sigSliderValueChanged = QtCore.Signal(str, float)  # (value)
 
-    sigZScanStart = QtCore.Signal(bool)  # (value)
-    sigZScanStop = QtCore.Signal(bool)  # (value)
+    sigZScanValue = QtCore.Signal(float)  # (value)
+
+    sigTableSelect = QtCore.Signal(int)
 
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
@@ -199,6 +200,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.well_top_widget.setMaximumWidth(60)
         self.z_scan_step_label = QtWidgets.QLabel("Step:")
         self.z_scan_step_widget = QtWidgets.QLineEdit('1.00')
+        self.z_scan_zpos_label = QtWidgets.QLabel(f"Adjust focus of row {'-'} to ")
+        self.z_scan_zpos_widget = QtWidgets.QLineEdit('')
+        self.z_scan_adjust_focus_widget = guitools.BetterPushButton("Focus!")
         self.z_scan_step_widget.setMaximumWidth(60)
         self.z_scan_preview_button = guitools.BetterPushButton("Preview")  # QtWidgets.QPushButton(corrds)
         self.z_scan_preview_button.setStyleSheet("font-size: 14px")
@@ -211,21 +215,39 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
         layout.addWidget(self.z_scan_step_widget, 0, 3, 1, 1)
         layout.addWidget(self.z_scan_preview_button, 1, 2, 1, 2)
-
+        layout.addWidget(self.z_scan_zpos_label, 2, 0, 1, 2)
+        layout.addWidget(self.z_scan_zpos_widget, 2, 2, 1, 1)
+        layout.addWidget(self.z_scan_adjust_focus_widget, 2, 3, 1, 1)
         # layout.addWidget(self.z_scan_stop_button)
         self._z_scan_box.setLayout(layout)
-
         self.main_grid_layout.addWidget(self._z_scan_box, *options)
         self.setLayout(self.main_grid_layout)
 
     def set_preview(self, im, colormap="gray", name="", pixelsize=(1, 1, 1), translation=(0, 0, 0)):
         if len(im.shape) == 2:
             translation = (translation[0], translation[1])
+        for layer in self.viewer.layers: # TODO: only have one preview
+            if "Preview" in layer.name:
+                self.viewer.layers.remove(layer.name)
         if self.layer is None or name not in self.viewer.layers:
             self.layer = self.viewer.add_image(im, rgb=False, colormap=colormap,
                                                scale=pixelsize, translate=translation,
                                                name=name, blending='additive')
         self.layer.data = im
+        # # Connect to the slider
+        # # slider_layer = self.viewer.layers[name]
+        # self.viewer.dims.events.current_step.connect(self.update_slider)
+
+    def update_slider(self, z_pos, name, event):
+        index = event.value[0]
+        # TODO: get selected layer.
+        # only trigger if update comes from first axis (optional)
+        try:
+            print(f"Name {name}. Z={z_pos[index]} mm. Length {len(self.viewer.layers[name].data)}")
+            self.sigZScanValue.emit(z_pos[index])
+        except Exception as e:
+            self.__logger.warning(f"Exception: {e}")
+        # print(f"Slider index {index} changed to: {event.value[0]}")
 
     def init_light_sources(self, light_sources, options=(4, 3, 2, 1)):
         # LEDs grid
@@ -453,6 +475,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.updateButtonState()
 
     def displayRowData(self):
+        self.sigTableSelect.emit(self.currentIndex)
         print(self.currentIndex)
 
     def updateButtonState(self):
@@ -584,20 +607,12 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             if n in default_hidden:
                 self.setColumnHidden(n, True)
                 action.setChecked(False)
-
-        # self.setDragEnabled(True)
-        # self.setAcceptDrops(True)
-        # self.viewport().setAcceptDrops(True)
-        # self.setDragDropOverwriteMode(False)
-        # self.setDropIndicatorShown(True)
         self.context_menu_enabled = True
         self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        # self.setDragDropMode(QtWidgets.QAbstractItemView.InternalMove)
         self.resizeColumnsToContents()
         self.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
         self.horizontalHeader().customContextMenuRequested.connect(self.onHorizontalHeaderClicked)
-        # self.scan_list.setEditTriggers(self.scan_list.NoEditTriggers)
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
     def set_item(self, row, col, item):

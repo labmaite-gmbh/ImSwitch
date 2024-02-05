@@ -8,15 +8,14 @@ from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
 
-from locai_app.exp_control.common.shared_context import ScanState
-from locai_app.exp_control.scanning.scan_manager import get_array_from_list
-from locai_app.generics import Point, ROOT_FOLDER
-from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo, \
-    ExperimentModules
-from ImSwitch.imswitch.imcommon.model import initLogger, APIExport
-from ImSwitch.imswitch.imcontrol.view import guitools as guitools
-from ImSwitch.imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
-from ImSwitch.imswitch.imcommon.framework.qt import Thread
+from exp_control.common.shared_context import ScanState
+from exp_control.scanning.scan_manager import get_array_from_list
+from imswitch.imcommon.model import initLogger, APIExport
+from imswitch.imcontrol.view import guitools as guitools
+from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
+from imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
+from imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
+from imswitch.imcommon.framework.qt import Thread
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -27,33 +26,41 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
-# PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
+PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
 
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
-MODULES = [ExperimentModules.SCAN, ExperimentModules.FLUIDICS]
+MODULES = ['scan']
 # DEVICE AND EXPERIMENT:
 DEVICE: str = "UC2_INVESTIGATOR"  # "BTIG_A" or "UC2_INVESTIGATOR"
 if DEVICE == "BTIG_A":
-    # DEVICE_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\locai_device_config.json"])
-    DEVICE_JSON_PATH = os.path.join(ROOT_FOLDER, 'config', 'locai_device_config_TEST.json')
-    EXPERIMENT_JSON_PATH = os.path.join(ROOT_FOLDER, 'config', 'updated_locai_experiment_config_TEST.json')
+    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\locai_device_config.json"])
+    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\btig_small_experiment_config_TEST.json"])
+    EXPERIMENT_JSON_PATH_ = os.sep.join(
+        [PROJECT_FOLDER, r"\config\updated_locai_experiment_config_TEST_multislot.json"])
 elif DEVICE == "UC2_INVESTIGATOR":
-    DEVICE_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\uc2_device_config.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([ROOT_FOLDER, r"\config\uc2_stage_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH = os.sep.join([ROOT_FOLDER, r"\config\bcall_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([ROOT_FOLDER, r"\config\grid_test_repeat.json"])
+    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
+    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\uc2_stage_experiment_config_TEST.json"])
+    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\grid_test_repeat.json"])
 # APPLICATION SPECIFIC FEATURES
+
 os.environ["APP"] = "BCALL"  # BCALL only for now
+if os.environ["APP"] == "BCALL":
+    exp_name = r"bcall_20240125_251221.json"
+    exp_name_ = r"bcall_experiment_config_TEST.json"
+    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
 from hardware_api.core.abcs import Camera
-from ImSwitch.imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
+from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
+from locai_app.generics import Point
 from config.config_definitions import ExperimentConfig
+from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
 
 class CameraWrapper(Camera):
+    camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
 
     def __init__(self, camera: GXPIPYManager):
@@ -130,6 +137,7 @@ class WorkerThread(Thread):
 class LabmaiteDeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
+    sigZScanStart = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -147,6 +155,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.selected_well = None
         self.selected_slot = None
         self.relative_focal_plane = None
+        self.preview_z_pos = None
+        self.preview_images = None
         self.initialize_widget()
         self.update_list_in_widget()
         self._widget.sigSliderValueChanged.connect(self.value_light_changed)
@@ -177,11 +187,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanInfo.setText(formated_info)
         self._widget.ScanInfo.setHidden(False)
 
-    def format_info_scan(self, info, date_format):
+    def format_info_scan(self, info):
         if info.scan_info is not None:
             current_scan = info.scan_info.current_scan_number + 1
+            date_format = "%Y-%m-%d %H:%M:%S"
             text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
-            if info.scan_info.status not in [ScanState.INITIALIZING, ScanState.WAITING]:
+            if info.scan_info.status != ScanState.INITIALIZING:
                 text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
                               f"  Slot:\t\t{info.scan_info.current_slot}\n" \
                               f"  Well:\t\t{info.scan_info.current_well}\n" \
@@ -191,8 +202,8 @@ class LabmaiteDeckController(LiveUpdatedController):
                               f"  Slot:\t\t---\n" \
                               f"  Well:\t\t---\n" \
                               f"  Position:\t---\n"
-            if info.scan_info.status == ScanState.COMPLETED:
-                text = text + f"  Next:\t\t{info.scan_info.next_scan_start_time}\n"
+            if info.scan_info.status == ScanState.WAITING:
+                text = text + f"  Next:\t\t{'NotImplementedYet'}\n"
             else:
                 text = text + f"  Next:\t\t---\n"
         else:
@@ -211,34 +222,39 @@ class LabmaiteDeckController(LiveUpdatedController):
                           f"  Reservoir:\t{act.reservoir.reagent_id}@{act.reservoir.mux_channel}({act.reservoir.ob1_channel})\n"
         else:
             action_text = f"  Mux Channel:\t---\n" \
-                          f"  Flow Rate:\t---\n" \
+                          f"  Flow Rate:\t0 μl/min\n" \
                           f"  Duration:\t---\n" \
                           f"  Reservoir:\t---\n"
         if info.fluid_info.mux_in:
-            action_text = action_text + f"  Mux in:\t\t{info.fluid_info.mux_in}\n"
+            action_text = action_text + f"  Current Mux in:\t{info.fluid_info.mux_in}\n"
         else:
-            action_text = action_text + f"  Mux in:\t---\n"
+            action_text = action_text + f"  Current Mux in:\t---\n"
         if info.fluid_info.mux_out:
-            action_text = action_text + f"  Mux out:\t{info.fluid_info.mux_out}\n"
+            action_text = action_text + f"  Current Mux out:\t{info.fluid_info.mux_out}\n"
         else:
-            action_text = action_text + f"  Mux out:\t---\n"
-        if info.fluid_info.pressure:
-            action_text = action_text + f"  Live pressure:\t{info.fluid_info.pressure:.2f} mBar\n"
-        else:
-            action_text = action_text + f"  Live pressure:\t---\n"
-        if info.fluid_info.flow_rate:
-            action_text = action_text + f"  Live flow:\t{info.fluid_info.flow_rate:.2f} μl/min\n"
-        else:
-            action_text = action_text + f"  Live flow:\t---\n"
+            action_text = action_text + f"  Current Mux out:\t---\n"
         return fluid_text + action_text
 
     def format_info(self, info: ExperimentLiveInfo):
-        date_format = "%d/%m/%Y %H:%M:%S"
+        date_format = "%Y-%m-%d %H:%M:%S"
         general_info = f"STATUS: {info.experiment_status.value}\n" \
                        f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
                        f"  Estimated left:\t{info.estimated_remaining_time}\n"
-        scan_text = self.format_info_scan(info, date_format)
+        scan_text = self.format_info_scan(info)
         fluid_info = self.format_fluid_info(info)
+        # # f" Index: {info.scan_info.current_pos_index}" \
+        # fluidics_info = f"FLUIDICS: {info.fluid_info.status.value}\n" \
+        #                 f"\tAction {info.fluid_info.current_action_number}:\n"
+        # action = info.fluid_info.current_action
+        # if action is not None:
+        #     action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
+        #                   f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
+        #     reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})\n"
+        # else:
+        #     action_info = ""
+        #     reservoir_info = ""
+        # # event_info = f"EVENT: {info.event}\n"
+        # return scan_info + fluidics_info + action_info + reservoir_info
         return general_info + scan_text + fluid_info
 
     def value_light_changed(self, light_source, value):
@@ -361,7 +377,6 @@ class LabmaiteDeckController(LiveUpdatedController):
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
         self.exp_config.remove_pos_by_index(row)
-
         # TODO: delete point from ExperimentConfig.
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
@@ -401,7 +416,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             if self.relative_focal_plane is None:
                 self.relative_focal_plane = self.scan_list[0].position_z
             self.scan_list[row].relative_focus_z = (point.z - self.relative_focal_plane)
-
         self.scan_list[row].point = point  # TODO: this one modifies the exp_config as intended.
         self.scan_list[row].position_x = point.x
         self.scan_list[row].position_y = point.y
@@ -424,6 +438,31 @@ class LabmaiteDeckController(LiveUpdatedController):
         for i_row, values in enumerate(self.scan_list[1:]):
             self.scan_list[1:][i_row].relative_focus_z = (
                     self.scan_list[1:][i_row].position_z - self.relative_focal_plane)
+
+    def adjust_focus_from_preview(self, row):
+        try:
+            z_new = float(self._widget.z_scan_zpos_widget.text())
+            z_old = self.scan_list[row].position_z
+            if z_old == z_new:
+                self.__logger.debug(f"Adjusting focus: same focus selected.")
+                return
+            if row == 0:
+                self.relative_focal_plane = z_new
+                self.propagate_relative_focus()
+                self.__logger.debug(f"Adjusting focus: changing relative focal plane. {z_old} um->{z_new} um")
+            else:
+                if self.relative_focal_plane is None:
+                    self.relative_focal_plane = self.scan_list[0].position_z
+                self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
+                self.__logger.debug(f"Adjusting focus: Row {row} - {z_old} um->{z_new} um")
+            self.scan_list[row].position_z = z_new
+            self.scan_list[row].point.z = z_new
+            self.update_list_in_widget()
+            self._widget.ScanInfo.setText("Unsaved changes.")
+            self._widget.ScanInfo.setHidden(False)
+        except Exception as e:
+            self.__logger.warning(f"Invalid value to set focus. Please use '.' as comma. {e}")
+
 
     def adjust_focus_in_list(self, row):
         positioner = self.exp_context.device.stage
@@ -664,6 +703,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.update_position(positioner)
 
     def connect_signals(self):
+        self.sigZScanStart.connect(self.set_images)
+        self._widget.sigTableSelect.connect(self.selected_row)
         self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
         self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_list)
         self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_list)
@@ -677,16 +718,42 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.home_button.clicked.connect(self.home)
         self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
 
-    def set_preview_images(self, images):
-        # images = well_previewer.preview_well(imager=imager, device=self.exp_context.device)
-        imgs = get_array_from_list(images)
-        name = f"{self.selected_well}"
-        # for im in images:
-        self._widget.set_preview(imgs, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
+    def set_images(self):
+        if len(self._widget.viewer.dims.events.current_step.callbacks) > 3: # TODO: a bit hacky...
+            self._widget.viewer.dims.events.current_step.disconnect(
+                self._widget.viewer.dims.events.current_step.callbacks[0])
+        # TODO: hadcoded pixelsize
+        name = f"Preview {self.selected_well}"
+        self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
+        self._widget.viewer.dims.events.current_step.connect(
+            partial(self._widget.update_slider, self.preview_z_pos, name))
+        self._widget.sigZScanValue.connect(self.set_z_slice_value)
+
+    def set_z_slice_value(self, value):
+        try:
+            value = float(value)
+            self._widget.z_scan_zpos_widget.setText(f"{value:.3f}")
+        except Exception as e:
+            self.__logger.warning(f"Exception set_z_slice_value: {e}")
+
+    def set_preview_images(self, images, z_pos):
+        self.preview_images = get_array_from_list(images)
+        self.preview_z_pos = z_pos
+        self.sigZScanStart.emit()
+
+    def selected_row(self, row):
+        self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")
+        if isinstance(self._widget.z_scan_adjust_focus_widget, guitools.BetterPushButton):
+            try:
+                self._widget.z_scan_adjust_focus_widget.clicked.disconnect()
+            except Exception:
+                pass
+            self._widget.z_scan_adjust_focus_widget.clicked.connect(partial(self.adjust_focus_from_preview, row))
+            print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        from locai_app.exp_control.imaging.imagers import get_preview_imager
-        from locai_app.exp_control.scanning.scan_manager import WellPreviewer
+        from exp_control.imaging.imagers import get_preview_imager
+        from exp_control.scanning.scan_manager import WellPreviewer
 
         z_start = float(self._widget.well_base_widget.text())
         z_end = float(self._widget.well_top_widget.text())
@@ -697,13 +764,7 @@ class LabmaiteDeckController(LiveUpdatedController):
 
         well_previewer = WellPreviewer(z_start=z_start, z_end=z_end, z_step=z_step,
                                        callback_finish=self.set_preview_images)
-        args = (imager, self.exp_context.device)
-        kwargs = {}
-        thread_preview = WorkerThread(well_previewer.preview_well, *args, **kwargs)
-        thread_preview.finished_signal.connect(self.set_preview_images)
-        thread_preview.start()
-        thread_preview.wait()
-        del thread_preview
+        well_previewer.preview_well(imager, self.exp_context.device)
 
     def start_scan(self):
         self.exp_context.load_experiment(self.exp_config, modules=MODULES)
