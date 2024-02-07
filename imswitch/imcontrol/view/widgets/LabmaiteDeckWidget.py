@@ -1,5 +1,7 @@
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QCheckBox, QMessageBox
 
+from config.config_definitions import ZStackParameters
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets, QtGui
@@ -189,7 +191,102 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.main_grid_layout.addWidget(self._wells_group_box, *options)
         self.setLayout(self.main_grid_layout)
 
-    def init_z_scan(self, options=[(3, 3, 1, 2)]):
+    def init_zstack_config_widget(self, default_values_in_mm: ZStackParameters, options=(4, 2, 2, 1)):
+        # z-stack
+        self.z_height = default_values_in_mm.z_height*1000
+        self.z_sep = default_values_in_mm.z_sep*1000
+        self.z_slices = default_values_in_mm.z_slices
+        # TODO: parse default values and load them to widget.
+        self.z_stack_config_widget = QtWidgets.QGroupBox("Z-Stack Configuration")
+        self.z_stack_config_widget.setMaximumWidth(200)
+        zstack_configuration_layout = QtWidgets.QGridLayout()
+
+        self.z_stack_checkbox_widget = QtWidgets.QCheckBox('Depth/Separation [um]')
+        self.z_stack_checkbox_widget.setCheckable(True)
+        self.z_stack_checkbox_widget.stateChanged.connect(self.open_z_stack_options)
+
+        self.z_stack_sample_depth_label = QtWidgets.QLabel('Depth:')
+        self.z_stack_sample_depth_label.setMaximumWidth(85)
+        self.z_stack_sample_depth_value = QtWidgets.QLineEdit()
+        self.z_stack_sample_depth_value.setText(f"{self.z_height:.1f}" if self.z_height else str(1))
+        self.z_stack_sample_depth_value.setEnabled(True)
+        self.z_stack_sample_depth_value.setMaximumWidth(65)
+        self.z_stack_sample_depth_value.textChanged.connect(self.calculate_z_stack)  # Connect valueChanged signal
+
+        self.z_stack_slice_sep_label = QtWidgets.QLabel('Separation:')
+        self.z_stack_slice_sep_label.setMaximumWidth(95)
+        self.z_stack_slice_sep_value = QtWidgets.QLineEdit()
+        self.z_stack_slice_sep_value.setText(f"{self.z_sep:.1f}" if self.z_sep else str(1)) # TODO: check
+        self.z_stack_slice_sep_value.setEnabled(False)
+        self.z_stack_slice_sep_value.setMaximumWidth(65)
+        self.z_stack_slice_sep_value.textChanged.connect(self.calculate_z_stack)
+
+        self.z_stack_slices_label = QtWidgets.QLabel('N° Slices:')
+        self.z_stack_slices_label.setMaximumWidth(65)
+        self.z_stack_slices_value = QtWidgets.QSpinBox()
+        self.z_stack_slices_value.setValue(self.z_slices)
+        self.z_stack_slices_value.setMaximumWidth(65)
+        self.z_stack_slices_value.setMinimum(1)
+        self.z_stack_slices_value.setMaximum(1000)
+        self.z_stack_slices_value.valueChanged.connect(self.calculate_z_stack)
+
+        zstack_configuration_layout.addWidget(self.z_stack_checkbox_widget, 0, 0, 1, 2)
+        zstack_configuration_layout.addWidget(self.z_stack_sample_depth_label, 1, 0, 1, 1)
+        zstack_configuration_layout.addWidget(self.z_stack_sample_depth_value, 1, 1, 1, 1)
+        zstack_configuration_layout.addWidget(self.z_stack_slice_sep_label, 2, 0, 1, 1)
+        zstack_configuration_layout.addWidget(self.z_stack_slice_sep_value, 2, 1, 1, 1)
+        zstack_configuration_layout.addWidget(self.z_stack_slices_label, 3, 0, 1, 1)
+        zstack_configuration_layout.addWidget(self.z_stack_slices_value, 3, 1, 1, 1)
+        self.z_stack_config_widget.setLayout(zstack_configuration_layout)
+        self.main_grid_layout.addWidget(self.z_stack_config_widget, *options)
+        self.calculate_z_stack()
+        self.ScanInfo.setText("")
+
+    def calculate_z_stack(self):
+        try:
+            if not self.z_stack_checkbox_widget.isChecked():
+                self.z_height = float(self.z_stack_sample_depth_value.text())
+                self.z_slices = self.z_stack_slices_value.value()
+                if self.z_slices < 1:
+                    raise ValueError("Number of slices must be greater or equal than 1")
+                self.z_sep = self.z_height / self.z_slices
+                self.z_stack_slice_sep_value.setText(f"{self.z_sep:.2f}")
+            else:
+                self.z_sep = float(self.z_stack_slice_sep_value.text())
+                self.z_slices = self.z_stack_slices_value.value()
+                if self.z_slices < 1:
+                    raise ValueError("Number of slices must be greater or equal than 1")
+                self.z_height = self.z_sep * self.z_slices
+                self.z_stack_sample_depth_value.setText(f"{self.z_height:.1f}")
+            self.ScanInfo.setText("Unsaved changes.")
+        except Exception as e:
+            self.__logger.warning(f"calculate_z_stack:  {e}")
+
+    def get_z_stack_values_in_um(self):
+        z_height = self.z_stack_sample_depth_value.value()
+        z_sep = self.z_stack_slice_sep_value.value()
+        z_slices = self.z_stack_slices_value.value()
+        z_stack_bool = bool(self.z_stack_checkbox_widget.isChecked())
+        return z_height, z_sep, z_slices, z_stack_bool
+
+    def open_z_stack_options(self):
+        if bool(self.z_stack_checkbox_widget.isChecked()):
+            # z-stack
+            self.z_stack_sample_depth_value.setEnabled(False)
+            self.z_stack_slice_sep_value.setEnabled(True)
+            self.z_stack_slice_sep_value.valueChanged.connect(self.calculate_z_stack)
+            self.z_stack_sample_depth_value.valueChanged.disconnect(self.calculate_z_stack)
+
+            # self.main_grid_layout.addWidget(self.ScanValueZmin, 1, 1, 1, 1) # Just use sample depth
+        else:
+            self.z_stack_sample_depth_value.setEnabled(True)
+            self.z_stack_slice_sep_value.setEnabled(False)
+            self.z_stack_sample_depth_value.valueChanged.connect(self.calculate_z_stack)  # Connect valueChanged signal
+            self.z_stack_slice_sep_value.valueChanged.disconnect(self.calculate_z_stack)
+
+        self.setLayout(self.main_grid_layout)
+
+    def init_z_scan_widget(self, options=[(3, 3, 1, 2)]):
         self._z_scan_box = QtWidgets.QGroupBox("Z-Scan:")
         layout = QtWidgets.QGridLayout()
         well_base_label = QtWidgets.QLabel("Well base:")
@@ -226,7 +323,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def set_preview(self, im, colormap="gray", name="", pixelsize=(1, 1, 1), translation=(0, 0, 0)):
         if len(im.shape) == 2:
             translation = (translation[0], translation[1])
-        for layer in self.viewer.layers: # TODO: only have one preview
+        for layer in self.viewer.layers:  # TODO: only have one preview
             if "Preview" in layer.name:
                 self.viewer.layers.remove(layer.name)
         if self.layer is None or name not in self.viewer.layers:
@@ -252,7 +349,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def init_light_sources(self, light_sources, options=(4, 3, 2, 1)):
         # LEDs grid
         self.LEDWidget = QtWidgets.QGroupBox("Lights: [%]")
-        self.LEDWidget.setMaximumWidth(120)
+        self.LEDWidget.setMaximumWidth(110)
         led_layout = QtWidgets.QGridLayout()
 
         self.light_sources_widgets = {}
@@ -261,7 +358,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             LEDWidget = QtWidgets.QSpinBox()
             LEDWidget.setMaximum(100)
             LEDWidget.setMinimum(0)
-            LEDWidget.setMaximumWidth(60)
+            LEDWidget.setMaximumWidth(65)
             # LED_spinbox.valueChanged.connect(LED_spinbox, self.led_value_change)
             ledName = f'{light.config.readable_name}'
             nameLabel = QtWidgets.QLabel(ledName)
@@ -507,10 +604,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         for row in range(self.scan_list.rowCount()):
             for col in range(self.scan_list.columnCount()):
                 item = self.scan_list.item(row, col)
-                if row == self.currentIndex:
-                    item.setSelected(True)  # Highlight the current row
-                else:
-                    item.setSelected(False)  # Reset other rows
+                if item is not None:
+                    if row == self.currentIndex:
+                        item.setSelected(True)  # Highlight the current row
+                    else:
+                        item.setSelected(False)  # Reset other rows
 
     def _get_items(self):
         rows = []
@@ -525,6 +623,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             rows.append(rowdata)
 
         return rows
+
+    def confirm_start_run(self):
+        reply = QMessageBox.question(self, 'Run Experiment', f'The unsaved changes wont be reflected in the current run. Are you sure you want to continue?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            return True
+        else:
+            return False
 
     def getAbsPosition(self, positionerName, axis):
         """ Returns the absolute position of the  specified positioner axis in
@@ -569,20 +675,54 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         return f'{positionerName}--{axis}'
 
 
+from PyQt5.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QStyle, QCheckBox
+from PyQt5.QtGui import QPainter, QColor
+
+
+class MyDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        # Call the base paint method to draw the item
+        super().paint(painter, option, index)
+
+        # If the item is selected, draw the background of the full row
+        if option.state & QStyle.State_Selected:
+            option = QStyleOptionViewItem(option)
+            self.initStyleOption(option, index)
+            widget = option.widget
+            # TODO: fix hardcoded
+            # Get the checkbox size
+            checkbox_size = widget.cellWidget(index.row(), widget.columns.index("Done")).sizeHint()
+            # Get the rect for the checkbox column
+            checkbox_rect = widget.visualRect(widget.model().index(index.row(), widget.columns.index("Done")))
+
+            # Draw the background of the selected row including the checkbox column
+            selected_color = option.palette.highlight().color()
+            selected_rect = option.rect
+            selected_rect.setLeft(checkbox_rect.left())  # Adjust the left boundary
+            painter.fillRect(selected_rect,
+                             QColor(selected_color.red(), selected_color.green(), selected_color.blue(), 50))
+            # Draw the background of the selected row
+            selected_color = option.palette.highlight().color()
+            painter.fillRect(option.rect,
+                             QColor(selected_color.red(), selected_color.green(), selected_color.blue(), 50))
+
+
 # From https://stackoverflow.com/questions/26227885/drag-and-drop-rows-within-qtablewidget
 class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigGoToTableClicked = QtCore.Signal(int)
     sigAdjustFocusClicked = QtCore.Signal(int)
     sigDeleteRowClicked = QtCore.Signal(int)
     sigAdjustPositionClicked = QtCore.Signal(int)
+    sigDuplicatePositionClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
+    sigRowChecked = QtCore.Signal(bool, int)
 
     from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute"]
+        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute", "Done"]
         self.column_mapping = {
             "Slot": "slot",
             "Labware": "labware",
@@ -591,8 +731,9 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             "Offset": ("offset_from_center_x", "offset_from_center_y"),
             "Z_focus": "relative_focus_z",
             "Absolute": ("position_x", "position_y", "position_z"),
+            "Done": "checked"
         }
-        default_hidden = [6]
+        default_hidden = [6, 7]
         self.mapping = {}
         self.set_header()
         self.scan_list_items = 0
@@ -614,6 +755,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.horizontalHeader().setContextMenuPolicy(Qt.CustomContextMenu)
         self.horizontalHeader().customContextMenuRequested.connect(self.onHorizontalHeaderClicked)
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.setItemDelegate(MyDelegate())
 
     def set_item(self, row, col, item):
         self.setItem(row, col, QtWidgets.QTableWidgetItem(str(item)))
@@ -632,6 +774,16 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                       item=(round(current_point.position_x, 2),
                             round(current_point.position_y, 2),
                             round(current_point.position_z, 2)))
+        checkbox = QCheckBox()
+        checkbox.setChecked(current_point.checked)
+        checkbox.setMaximumSize(20, 20)
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id))
+        self.setCellWidget(row_id, self.columns.index("Done"), checkbox)
+        self.resizeColumnsToContents()
+
+    def row_checked(self, row):
+        state = self.cellWidget(row, self.columns.index("Done")).isChecked()
+        self.sigRowChecked.emit(state, row)
 
     def onHorizontalHeaderClicked(self, point):
         # https://www.programcreek.com/python/?code=danigargu%2Fheap-viewer%2Fheap-viewer-master%2Fheap_viewer%2Fwidgets%2Fstructs.py
@@ -691,6 +843,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.getSignal(self, "sigAdjustFocusClicked")) else None
             adjust_pos_action = menu.addAction("Adjust Position") if self.isSignalConnected(
                 self.getSignal(self, "sigAdjustPositionClicked")) else None
+            duplicate_pos_action = menu.addAction("Duplicate Position") if self.isSignalConnected(
+                self.getSignal(self, "sigDuplicatePositionClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)
@@ -700,6 +854,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.adjust_focus_action(row)
             elif action == adjust_pos_action:
                 self.adjust_position_action(row)
+            elif action == duplicate_pos_action:
+                self.duplicate_position_action(row)
 
     def go_to_action(self, row):
         self.sigGoToTableClicked.emit(row)
@@ -710,8 +866,19 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     def adjust_position_action(self, row):
         self.sigAdjustPositionClicked.emit(row)
 
+    def duplicate_position_action(self, row):
+        self.sigDuplicatePositionClicked.emit(row)
+
     def deleteSelected(self, row):
-        self.sigDeleteRowClicked.emit(row)
+        reply = QMessageBox.question(self, 'Delete Confirmation', f'Are you sure you want to delete this row ({row})?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            # Perform the delete action here
+            print("Delete confirmed")
+            self.sigDeleteRowClicked.emit(row)
+        else:
+            print("Delete canceled")
+            return
 
     def dropEvent(self, event):
         if not event.isAccepted() and event.source() == self:

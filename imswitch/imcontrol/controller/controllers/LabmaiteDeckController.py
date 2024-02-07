@@ -3,6 +3,8 @@ import os
 import threading
 
 import time
+from copy import copy
+
 from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
@@ -29,7 +31,7 @@ _objectiveRadius = 29.0 / 2  # Olympus
 PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
 
 # MODE:
-os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
+os.environ["DEBUG"] = "1"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
 MODULES = ['scan']
 # DEVICE AND EXPERIMENT:
@@ -295,12 +297,13 @@ class LabmaiteDeckController(LiveUpdatedController):
                                 slot=slot_number,
                                 well=well,
                                 position_in_well_index=idx,
-                                position_x=well_position.x,
-                                position_y=well_position.y,
+                                position_x=well_position.x + position.x,
+                                position_y=well_position.y + position.y,
                                 position_z=position.z,
                                 offset_from_center_x=position.x,
                                 offset_from_center_y=position.y,
-                                relative_focus_z=relative_focus_z
+                                relative_focus_z=relative_focus_z,
+                                checked=False
                             )
                             self.scan_list.append(scanpoint)
                         else:
@@ -334,25 +337,46 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 2, 1))
         self._widget.init_scan_list((7, 0, 2, 5))
         if "BCALL" in os.environ["APP"]:
-            self._widget.init_z_scan((3, 3, 1, 2))
+            self._widget.init_z_scan_widget((3, 3, 1, 2))
+            self._widget.init_experiment_info((4, 0, 2, 2))
+            self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params,
+                                                   options=(4, 2, 2, 1))
             self._widget.z_scan_preview_button.clicked.connect(self.z_scan_preview)
+            # self._widget.z_stack_checkbox_widget.clicked.connect(self.z_scan_preview) # TODO: change
+            # TODO: connect change in enabled Z-stack widget
+            self._widget.scan_list.sigRowChecked.connect(self.checked_row)
+            try:
+                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
+                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Labware"), True)
+                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Done"), False)
+            except ValueError as e:
+                self.__logger.warning(f"Error when initializing LabmaiteDeckWidget's Scan List. Exception: {e} ")
         else:
             pass
         # Connect widget´s buttons
         self.connect_signals()
         self.connect_widget_buttons()
 
-    def update_beacons_index(self):
-        count_dict = {}
-        for row in self.scan_list:
-            slot = row.slot
-            well = row.well
-            unique_id = row.position_x, row.position_y, row.position_z
-            key = (slot, well)
-            if key not in count_dict:
-                count_dict[key] = set()
-            count_dict[key].add(unique_id)
-            row.position_in_well_index = len(count_dict[key])
+    def checked_row(self, state, row):
+        self.scan_list[row].checked = state
+
+    def update_beacons_index(self, row=None):
+        if row is None:
+            count_dict = {}
+            for row in self.scan_list:
+                slot = row.slot
+                well = row.well
+                unique_id = row.position_x, row.position_y, row.position_z
+                key = (slot, well)
+                if key not in count_dict:
+                    count_dict[key] = set()
+                count_dict[key].add(unique_id)
+                row.position_in_well_index = len(count_dict[key])
+        else:
+            key = (self.scan_list[row].slot, self.scan_list[row].well)
+            while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well):
+                self.scan_list[row + 1].position_in_well_index += 1
+                row += 1
 
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
@@ -380,6 +404,15 @@ class LabmaiteDeckController(LiveUpdatedController):
         # TODO: delete point from ExperimentConfig.
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
+        self.update_list_in_widget()
+        self._widget.ScanInfo.setText("Unsaved changes.")
+        self._widget.ScanInfo.setHidden(False)
+
+    def duplicate_position_in_list(self, row):
+        selected_scan_point = copy(self.scan_list[row])
+        self.scan_list.insert(row, selected_scan_point)
+        self.__logger.debug(f"Duplicating Position in row {row}: {self.scan_list[row]}")
+        self.update_beacons_index(row)
         self.update_list_in_widget()
         self._widget.ScanInfo.setText("Unsaved changes.")
         self._widget.ScanInfo.setHidden(False)
@@ -462,7 +495,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             self._widget.ScanInfo.setHidden(False)
         except Exception as e:
             self.__logger.warning(f"Invalid value to set focus. Please use '.' as comma. {e}")
-
 
     def adjust_focus_in_list(self, row):
         positioner = self.exp_context.device.stage
@@ -709,6 +741,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_list)
         self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_list)
         self._widget.scan_list.sigAdjustPositionClicked.connect(self.adjust_position_in_list)
+        self._widget.scan_list.sigDuplicatePositionClicked.connect(self.duplicate_position_in_list)
 
     def connect_widget_buttons(self):
         self.connect_deck_slots()
@@ -719,10 +752,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
 
     def set_images(self):
-        if len(self._widget.viewer.dims.events.current_step.callbacks) > 3: # TODO: a bit hacky...
+        if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
             self._widget.viewer.dims.events.current_step.disconnect(
                 self._widget.viewer.dims.events.current_step.callbacks[0])
-        # TODO: hadcoded pixelsize
+        # TODO: hardcoded pixelsize
         name = f"Preview {self.selected_well}"
         self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
         self._widget.viewer.dims.events.current_step.connect(
@@ -766,7 +799,13 @@ class LabmaiteDeckController(LiveUpdatedController):
                                        callback_finish=self.set_preview_images)
         well_previewer.preview_well(imager, self.exp_context.device)
 
+    def confirm_start_run(self):
+        return self._widget.confirm_start_run()
+
     def start_scan(self):
+        if self._widget.ScanInfo.text() == "Unsaved changes.":
+            if not self.confirm_start_run():
+                return
         self.exp_context.load_experiment(self.exp_config, modules=MODULES)
         # Start the experiment in a separate thread
         if self.exp_context.state != ExperimentState.CREATED:
@@ -779,6 +818,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStartButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(False)
         self._widget.ScanStopButton.setEnabled(True)
+        self.hide_widgets()
+
+    def hide_widgets(self):
         self._widget._positioner_widget.hide()
         self._widget._wells_group_box.hide()
         self._widget._deck_group_box.hide()
@@ -786,6 +828,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.home_button_widget.hide()
         self._widget.well_action_widget.hide()
         self._widget.scan_list.context_menu_enabled = False
+        if os.environ["APP"] == "BCALL":
+            self._widget._z_scan_box.hide()
+            self._widget.z_stack_config_widget.hide()
 
     def stop_scan(self):
         # if hasattr(self.exp_context, "shared_context"):
@@ -798,6 +843,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStartButton.setEnabled(True)
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
+        self.show_widgets()
+
+    def show_widgets(self):
         self._widget._positioner_widget.show()
         self._widget._wells_group_box.show()
         self._widget._deck_group_box.show()
@@ -805,9 +853,20 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.home_button_widget.show()
         self._widget.well_action_widget.show()
         self._widget.scan_list.context_menu_enabled = True
+        if os.environ["APP"] == "BCALL":
+            self._widget._z_scan_box.show()
+            self._widget.z_stack_config_widget.show()
 
     def save_experiment_config(self):
         self.save_scan_list_to_json()
+        if os.environ["APP"] == "BCALL":
+            self.save_zstack_params()
+
+    def save_zstack_params(self):
+        z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()
+        self.exp_config.scan_params.z_stack_params.z_sep = z_sep/1000
+        self.exp_config.scan_params.z_stack_params.z_slices = z_slices
+        self.exp_config.scan_params.z_stack_params.z_height = z_height/1000
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
