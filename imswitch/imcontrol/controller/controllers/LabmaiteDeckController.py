@@ -10,8 +10,8 @@ from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
 
-from exp_control.common.shared_context import ScanState
-from exp_control.scanning.scan_manager import get_array_from_list
+from locai_app.exp_control.common.shared_context import ScanState
+from locai_app.exp_control.scanning.scan_manager import get_array_from_list
 from imswitch.imcommon.model import initLogger, APIExport
 from imswitch.imcontrol.view import guitools as guitools
 from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
@@ -31,7 +31,7 @@ _objectiveRadius = 29.0 / 2  # Olympus
 PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
 
 # MODE:
-os.environ["DEBUG"] = "1"  # 1 for debug/Mocks, 2 for real device
+os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
 MODULES = ['scan']
 # DEVICE AND EXPERIMENT:
@@ -55,10 +55,12 @@ if os.environ["APP"] == "BCALL":
 
 from hardware_api.core.abcs import Camera
 from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
-from locai_app.generics import Point
 from config.config_definitions import ExperimentConfig
 from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
+from locai_app.exp_control.imaging.imagers import get_preview_imager
+from locai_app.exp_control.scanning.scan_manager import WellPreviewer
+from locai_app.generics import Point
 
 
 class CameraWrapper(Camera):
@@ -87,53 +89,6 @@ class CameraWrapper(Camera):
 
     def disconnect(self):
         self.camera.finalize()
-
-
-class WorkerThread(Thread):
-    finished_signal = QtCore.Signal(list)
-
-    def __init__(self, task_func, *args, **kwargs):
-        super().__init__()
-        self.task_func = task_func
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        # Execute the specified task
-        result = self.task_func(*self.args, **self.kwargs)
-        self.finished_signal.emit(result)
-
-
-# class PositionerThread(threading.Thread):
-#     def __init__(self, positioner, update_position_callback):
-#         super().__init__()
-#         self.positioner = positioner
-#         self.position = positioner.position()
-#         self.update_position_callback = update_position_callback
-#
-#     def home(self):
-#         self.positioner.home()
-#         self.position = self.positioner.position()
-#         return self.position
-#
-#     def home_axis(self, axis: str):
-#         self.positioner.positioner.home_axis(axis)
-#         self.position = self.positioner.position()
-#         return self.position
-#
-#     def move_absolute(self, new_position: Point):
-#         self.positioner.move_absolute(new_position)
-#         self.position = self.positioner.position()
-#         return self.position
-#
-#     def move_relative(self, shift: Point):
-#         self.positioner.move_relative(shift)
-#         self.position = self.positioner.position()
-#         return self.position
-#
-#     def move_from_well(self, slot: str, well: str, offset: Point):
-#         self.positioner.move_from_well(slot, well, offset)
-#         self.update_position_callback(self.positioner)
 
 
 class LabmaiteDeckController(LiveUpdatedController):
@@ -181,13 +136,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         camera = CameraWrapper(imswitch_camera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
-        device.stage.home()
+        device.stage.home() if DEVICE == "UC2_INVESTIGATOR" else ...
         return device
 
     def update_scan_info(self, dict_info):
         formated_info = self.format_info(dict_info)
-        self._widget.ScanInfo.setText(formated_info)
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit(formated_info)
 
     def format_info_scan(self, info):
         if info.scan_info is not None:
@@ -195,7 +149,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             date_format = "%Y-%m-%d %H:%M:%S"
             text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
             if info.scan_info.status != ScanState.INITIALIZING:
-                text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
+                start_time = info.scan_info.scan_start_time if info.scan_info.scan_start_time is not None else "-"
+                text = text + f"  Start:\t\t{start_time}\n" \
                               f"  Slot:\t\t{info.scan_info.current_slot}\n" \
                               f"  Well:\t\t{info.scan_info.current_well}\n" \
                               f"  Position:\t({info.pos_info.x:.2f}, {info.pos_info.y:.2f}, {info.pos_info.z:.3f})\n"
@@ -314,8 +269,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         try:
             with open(path, "w") as file:
                 file.write(self.exp_config.json(indent=4))
-            self._widget.ScanInfo.setText(f"Saved changes to {os.path.split(path)[1]}")
-            self._widget.ScanInfo.setHidden(False)
+            self._widget.sigScanInfoTextChanged.emit(f"Saved changes to {os.path.split(path)[1]}")
             self.__logger.debug(f"Saved file to {path}")
             self.__logger.debug(f"Experiment Config: {self.exp_config}")
         except Exception as e:
@@ -380,9 +334,7 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
-        # self._widget.update_scan_list(ExperimentConfig)
 
-    # @APIExport(runOnUIThread=True)
     def go_to_position_in_list(self, row):
         positioner = self.exp_context.device.stage
         well = self.scan_list[row].well
@@ -390,11 +342,14 @@ class LabmaiteDeckController(LiveUpdatedController):
         focus_plane = self.scan_list[row].position_z
         offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y,
                        z=focus_plane)
-        # TODO: use single thread
-        threading.Thread(target=positioner.move_from_well, args=(str(slot), well, offset), daemon=True).start()
-        self.update_position(positioner)
-        self.select_labware(slot=str(slot))
-        self.select_well(well=well)
+
+        def move_from_well_update():
+            positioner.move_from_well(str(slot), well, offset)
+            self.update_position(positioner)
+            self.select_labware(slot=str(slot))
+            self.select_well(well=well)
+
+        threading.Thread(target=move_from_well_update, daemon=True).start()
         self.__logger.debug(
             f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
 
@@ -405,8 +360,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
         self.update_list_in_widget()
-        self._widget.ScanInfo.setText("Unsaved changes.")
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def duplicate_position_in_list(self, row):
         selected_scan_point = copy(self.scan_list[row])
@@ -414,8 +368,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger.debug(f"Duplicating Position in row {row}: {self.scan_list[row]}")
         self.update_beacons_index(row)
         self.update_list_in_widget()
-        self._widget.ScanInfo.setText("Unsaved changes.")
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def adjust_position_in_list(self, row):
         positioner = self.exp_context.device.stage
@@ -436,8 +389,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger.debug(f"Adjusting Position: {(x_old, y_old, z_old)} -> {p.as_tuple()}")
         self.update_beacons_index()
         self.update_list_in_widget()
-        self._widget.ScanInfo.setText("Unsaved changes.")
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def update_row_from_point(self, row: int, point: Point):
         positioner = self.exp_context.device.stage
@@ -449,7 +401,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             if self.relative_focal_plane is None:
                 self.relative_focal_plane = self.scan_list[0].position_z
             self.scan_list[row].relative_focus_z = (point.z - self.relative_focal_plane)
-        self.scan_list[row].point = point  # TODO: this one modifies the exp_config as intended.
+        self.scan_list[row].point = point
         self.scan_list[row].position_x = point.x
         self.scan_list[row].position_y = point.y
         self.scan_list[row].position_z = point.z
@@ -463,9 +415,9 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].well = well_new
         self.scan_list[row].offset_from_center_x = offset_new.x
         self.scan_list[row].offset_from_center_y = offset_new.y
-        self.scan_list[row].point.x = offset_new.x  # TODO: this one modifies the exp_config as intended.
-        self.scan_list[row].point.y = offset_new.y  # TODO: this one modifies the exp_config as intended.
-        self.scan_list[row].point.z = point.z  # TODO: this one modifies the exp_config as intended.
+        self.scan_list[row].point.x = offset_new.x
+        self.scan_list[row].point.y = offset_new.y
+        self.scan_list[row].point.z = point.z
 
     def propagate_relative_focus(self):
         for i_row, values in enumerate(self.scan_list[1:]):
@@ -491,8 +443,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].position_z = z_new
             self.scan_list[row].point.z = z_new
             self.update_list_in_widget()
-            self._widget.ScanInfo.setText("Unsaved changes.")
-            self._widget.ScanInfo.setHidden(False)
+            self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
         except Exception as e:
             self.__logger.warning(f"Invalid value to set focus. Please use '.' as comma. {e}")
 
@@ -516,8 +467,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.scan_list[row].position_z = z_new
         self.scan_list[row].point.z = p.z  # TODO: this one modifies the exp_config as intended.
         self.update_list_in_widget()
-        self._widget.ScanInfo.setText("Unsaved changes.")
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def adjust_all_focus(self):
         positioner = self.exp_context.device.stage
@@ -532,10 +482,9 @@ class LabmaiteDeckController(LiveUpdatedController):
                     self.relative_focal_plane = self.scan_list[0].position_z
                 self.scan_list[row].relative_focus_z = (z_new - self.relative_focal_plane)
             self.scan_list[row].position_z = z_new
-            self.scan_list[row].point.z = p.z  # TODO: this one modifies the exp_config as intended.
+            self.scan_list[row].point.z = p.z
         self.update_list_in_widget()
-        self._widget.ScanInfo.setText("Unsaved changes.")
-        self._widget.ScanInfo.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     @property
     def selected_well(self):
@@ -598,9 +547,18 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger.debug(f"Homing axis {axis}")
         self._master.positionersManager[positionerName].doHome(axis)
         positioner = self.exp_context.device.stage
-        # TODO: use single thread
-        threading.Thread(target=positioner.positioner.home_axis, args=(axis,), daemon=True).start()
-        self.update_position(positioner)
+
+        try:
+            def home_axis_update():
+                positioner.positioner.home_axis(axis)
+                self.update_position(positioner)
+                self.select_labware(slot=self.selected_slot)
+                self.select_well(well=None) if axis != "Z" else self.select_well(well=self.selected_well)
+
+            threading.Thread(target=home_axis_update, daemon=True).start()
+        except Exception as e:
+            self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def getPos(self):
         return self._master.positionersManager.execOnAll(lambda p: p.position)
@@ -610,9 +568,17 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def home(self) -> None:
         positioner = self.exp_context.device.stage
-        # TODO: use single thread
-        threading.Thread(target=positioner.home, daemon=True).start()
-        self.update_position(positioner)
+        try:
+            def home_update():
+                positioner.home()
+                self.update_position(positioner)
+                self.select_labware(slot=self.selected_slot)
+                self.select_well(well=None)
+
+            threading.Thread(target=home_update, daemon=True).start()
+        except Exception as e:
+            self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def zero(self):
         positioner = self.exp_context.device.stage
@@ -624,53 +590,88 @@ class LabmaiteDeckController(LiveUpdatedController):
             for i_row, values in enumerate(self.scan_list):
                 self.scan_list[i_row].position_z += (self.relative_focal_plane - old_relative_focal_plane)
         self.update_list_in_widget()
-        self._widget.scan_list_actions_info.setText("Unsaved changes.")
-        self._widget.scan_list_actions_info.setHidden(False)
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def move(self, new_position: Point):
         """ Moves positioner to absolute position. """
         positioner = self.exp_context.device.stage
-        # TODO: use single thread
-        threading.Thread(target=positioner.move_absolute, args=(new_position,), daemon=True).start()
-        self.update_position(positioner)
+        try:
+            def move_absolute_update():
+                positioner.move_absolute(new_position)
+                pos = self.update_position(positioner)
+                slot = positioner.deck_manager.get_slot(pos)
+                well = positioner.deck_manager.get_closest_well(pos)
+                self.select_labware(slot=str(slot))
+                self.select_well(well=well)
+
+            threading.Thread(target=move_absolute_update, daemon=True).start()
+        except Exception as e:
+            self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def setPos(self, axis, position):
         """ Moves the positioner to the specified position in the specified axis. """
         # positioner.setPosition(position, axis)
-        self._update_position(axis)
+        # self._update_position(axis)
+        pass
 
     def moveAbsolute(self, axis):
         positioner = self.exp_context.device.stage
-        p_positioner = positioner.position()
-        p_axis = self._widget.getAbsPosition(self.positioner_name, axis)
-        setattr(p_positioner, axis.lower(), p_axis)
-        # TODO: use single thread
-        threading.Thread(target=positioner.move_absolute, args=(p_positioner,), daemon=True).start()
-        self.update_position(positioner)
+        try:
+            p_positioner = positioner.position()
+            p_axis = self._widget.getAbsPosition(self.positioner_name, axis)
+            setattr(p_positioner, axis.lower(), p_axis)
+
+            def move_absolute_update():
+                positioner.move_absolute(p_positioner)
+                pos = self.update_position(positioner)
+                slot = positioner.deck_manager.get_slot(pos)
+                well = positioner.deck_manager.get_closest_well(pos)
+                self.select_labware(slot=str(slot))
+                self.select_well(well=well)
+
+            threading.Thread(target=move_absolute_update, daemon=True).start()
+        except Exception as e:
+            self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def stepUp(self, positionerName, axis):
         shift = self._widget.getStepSize(positionerName, axis)
         positioner = self.exp_context.device.stage
         try:
             point = Point(**{axis.lower(): shift})
-            # TODO: use single thread
-            threading.Thread(target=positioner.move_relative, args=(point,), daemon=True).start()
-            self.update_position(positioner)
+
+            def step_up_update():
+                positioner.move_relative(point)
+                pos = self.update_position(positioner)
+                slot = positioner.deck_manager.get_slot(pos)
+                well = positioner.deck_manager.get_closest_well(pos)
+                self.select_labware(slot=str(slot))
+                self.select_well(well=well)
+
+            threading.Thread(target=step_up_update, daemon=True).start()
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
-            self._widget.ScanInfo.setText("Avoiding objective collision.")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def stepDown(self, positionerName, axis):
         shift = -self._widget.getStepSize(positionerName, axis)
         positioner = self.exp_context.device.stage
         try:
             point = Point(**{axis.lower(): shift})
-            # TODO: use single thread
-            threading.Thread(target=positioner.move_relative, args=(point,), daemon=True).start()
-            self.update_position(positioner)
+
+            def step_down_update():
+                positioner.move_relative(point)
+                pos = self.update_position(positioner)
+                slot = positioner.deck_manager.get_slot(pos)
+                well = positioner.deck_manager.get_closest_well(pos)
+                self.select_labware(slot=str(slot))
+                self.select_well(well=well)
+
+            threading.Thread(target=step_down_update, daemon=True).start()
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
-            self._widget.ScanInfo.setText("Avoiding objective collision.")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
     def setSpeedGUI(self, axis):
         speed = self._widget.getSpeed(self.positioner_name, axis)
@@ -683,19 +684,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.updateSpeed(self.positioner_name, axis, speed)
 
     def update_position(self, positioner):
-        [self._update_position(axis) for axis in positioner.axes]
-
-    def _update_position(self, axis):
-        positioner = self.exp_context.device.stage
-
-        def update_pos():
-            pos = positioner.position()
-            newPos = pos.__getattribute__(axis.lower())
-            self._widget.updatePosition(self.positioner_name, axis, newPos)
-            self.setSharedAttr(axis, _positionAttr, newPos)
-
-        t = threading.Thread(target=update_pos, daemon=True)
-        t.start()
+        pos = positioner.position()
+        self._widget.sigPositionUpdate.emit(self.positioner_name, pos.x, pos.y, pos.z)
+        return pos
 
     def attrChanged(self, key, value):
         # TODO: check if needed.
@@ -718,21 +709,26 @@ class LabmaiteDeckController(LiveUpdatedController):
         finally:
             self.settingAttr = False
 
-    def select_labware(self, slot: str):
+    def select_labware(self, slot: str = None):
         self.__logger.debug(f"Slot {slot}")
-        self._widget.select_labware(slot)
         self.selected_slot = slot
         self.selected_well = None
-        self.connect_wells()
+        self._widget.sigLabwareSelect.emit(self.selected_slot)
+        self._widget.sigWellSelect.emit(self.selected_well)
 
     def move_to_well(self, well: str, slot: str):
         """ Moves positioner to center of selecterd well keeping the current Z-axis position. """
         positioner = self.exp_context.device.stage
         self.__logger.debug(f"Move to {well} ({slot})")
-        # TODO: use single thread
         position = Point(z=positioner.position().z)
-        threading.Thread(target=positioner.move_from_well, args=(slot, well, position,), daemon=True).start()
-        self.update_position(positioner)
+
+        def move_from_well_update():
+            positioner.move_from_well(str(slot), well, position)
+            self.update_position(positioner)
+            self.select_labware(slot=str(slot))
+            self.select_well(well=well)
+
+        threading.Thread(target=move_from_well_update, daemon=True).start()
 
     def connect_signals(self):
         self.sigZScanStart.connect(self.set_images)
@@ -750,6 +746,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanSaveButton.clicked.connect(self.save_experiment_config)
         self._widget.home_button.clicked.connect(self.home)
         self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
+        self.connect_wells()
+        self.connect_go_to()
 
     def set_images(self):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -785,9 +783,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        from exp_control.imaging.imagers import get_preview_imager
-        from exp_control.scanning.scan_manager import WellPreviewer
-
         z_start = float(self._widget.well_base_widget.text())
         z_end = float(self._widget.well_top_widget.text())
         z_step = float(self._widget.z_scan_step_widget.text())
@@ -858,36 +853,31 @@ class LabmaiteDeckController(LiveUpdatedController):
             self._widget.z_stack_config_widget.show()
 
     def save_experiment_config(self):
-        self.save_scan_list_to_json()
         if os.environ["APP"] == "BCALL":
             self.save_zstack_params()
+        self.save_scan_list_to_json()
+
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()
-        self.exp_config.scan_params.z_stack_params.z_sep = z_sep/1000
+        self.exp_config.scan_params.z_stack_params.z_sep = z_sep / 1000
         self.exp_config.scan_params.z_stack_params.z_slices = z_slices
-        self.exp_config.scan_params.z_stack_params.z_height = z_height/1000
+        self.exp_config.scan_params.z_stack_params.z_height = z_height / 1000
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
         # Connect signals for all buttons
         self._widget.slots_combobox.currentTextChanged.connect(self.select_labware)
-        # for slot, btn in self._widget.deck_slots.items():
-        #     # Connect signals
-        #     if isinstance(btn, guitools.BetterPushButton):
-        #         btn.clicked.connect(partial(self.select_labware, slot))
-        # Select default slot -> done in init
         positioner = self.exp_context.device.stage
         self.select_labware(list(positioner.deck_manager.labwares.keys())[0])  # TODO: improve...
 
     def connect_go_to(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""
-        if isinstance(self._widget.goto_btn, guitools.BetterPushButton):
-            try:
-                self._widget.goto_btn.clicked.disconnect()
-            except Exception:
-                pass
-            self._widget.goto_btn.clicked.connect(partial(self.move_to_well, self.selected_well, self.selected_slot))
+
+        def on_go_to_clicked():
+            self.move_to_well(self.selected_well, self.selected_slot)
+
+        self._widget.goto_btn.clicked.connect(on_go_to_clicked)
 
     def connect_wells(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""
@@ -897,8 +887,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             if isinstance(btn, guitools.BetterPushButton):
                 btn.clicked.connect(partial(self.select_well, well))
 
-    def select_well(self, well):
+    def select_well(self, well: str = None):
         self.__logger.debug(f"Well {well} in slot {self.selected_slot}")
         self.selected_well = well
-        self._widget.select_well(well)
-        self.connect_go_to()
+        self._widget.sigWellSelect.emit(well)

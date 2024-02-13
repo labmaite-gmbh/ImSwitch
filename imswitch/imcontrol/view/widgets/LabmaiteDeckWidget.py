@@ -1,14 +1,17 @@
+from typing import Optional
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCheckBox, QMessageBox
 
-from config.config_definitions import ZStackParameters
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
 from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 
-from locai_app.impl.deck.sd_deck_manager import DeckManager
 from .basewidgets import Widget, NapariHybridWidget
+
+from locai_app.impl.deck.sd_deck_manager import DeckManager
+from config.config_definitions import ZStackParameters
 
 
 class LabmaiteDeckWidget(NapariHybridWidget):
@@ -33,6 +36,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigZScanValue = QtCore.Signal(float)  # (value)
 
     sigTableSelect = QtCore.Signal(int)
+    sigScanInfoTextChanged = QtCore.Signal(str)
+
+    sigPositionUpdate = QtCore.Signal(str, float, float, float)
+    sigLabwareSelect = QtCore.Signal(str)
+    sigWellSelect = QtCore.Signal(str)
 
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
@@ -42,6 +50,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.main_grid_layout = QtWidgets.QGridLayout()
         self.scan_list = TableWidgetDragRows()  # Initialize empty table
         self.info = ""  # TODO: use QLabel...
+        self.current_slot = None
+        self.current_well = None
         self.layer = None
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
@@ -57,9 +67,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self, 'Save File', '', 'JSON(*.json)')
         return path[0]
 
+    def update_stage_position(self, positioner_name: str, x_pos: float, y_pos: float, z_pos: float):
+        self.updatePosition(positioner_name, "X", x_pos)
+        self.updatePosition(positioner_name, "Y", y_pos)
+        self.updatePosition(positioner_name, "Z", z_pos)
+
     def addPositioner(self, positionerName, axes, hasSpeed, hasHome=True, hasStop=True, options=(0, 0, 1, 1)):
         self._positioner_widget = QtWidgets.QGroupBox(f"{positionerName}")
         layout = QtWidgets.QGridLayout()
+        self.sigPositionUpdate.connect(self.update_stage_position)
         for i in range(len(axes)):
             axis = axes[i]
             parNameSuffix = self._getParNameSuffix(positionerName, axis)
@@ -132,34 +148,40 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self._positioner_widget.setLayout(layout)
         self.main_grid_layout.addWidget(self._positioner_widget, *options)
 
-    def select_well(self, well):
+    def select_well(self, well: str = None):
+        if well == self.current_well:
+            return
+        self.current_well = well
         for well_id, btn in self.wells.items():
             if isinstance(btn, guitools.BetterPushButton):
                 if well_id == well:
                     btn.setStyleSheet("background-color: green; font-size: 14px")
                 else:
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
-        self.beacons_selected_well.setText(f"{well}")
+        self.beacons_selected_well.setText(f"{self.current_well}")
 
-    def select_labware(self, slot=None, options=(1, 0, 3, 3)):
+    def select_labware(self, slot: str = None, options=(1, 0, 3, 3)):
         if slot is None:
             slot = self.slots_combobox.currentText()
         self._select_labware(str(slot), options)
         # self.change_slot_color(slot) # TODO: this causes an infinite recursion...
 
     def _select_labware(self, slot, options=(1, 0, 3, 3)):
+        if slot == self.current_slot:
+            return
         self.current_slot = slot
         if hasattr(self, "_wells_group_box"):
             self.main_grid_layout.removeWidget(self._wells_group_box)
-        self._wells_group_box = QtWidgets.QGroupBox(f"{self._labware_dict[slot]}")
+        self._wells_group_box = QtWidgets.QGroupBox(f"{self._labware_dict[self.current_slot]}")
         layout = QtWidgets.QGridLayout()
-        labware = self._labware_dict[slot]
+
+        labware = self._labware_dict[self.current_slot]
         # Create dictionary to hold buttons
         self.wells = {}
         # Create grid layout for wells (buttons)
         well_buttons = {}
-        rows = len(self._labware_dict[slot].rows())
-        columns = len(self._labware_dict[slot].columns())
+        rows = len(self._labware_dict[self.current_slot].rows())
+        columns = len(self._labware_dict[self.current_slot].columns())
         for r in list(range(rows)):
             for c in list(range(columns)):
                 well_buttons[c + 1] = (0, c + 1)
@@ -193,10 +215,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def init_zstack_config_widget(self, default_values_in_mm: ZStackParameters, options=(4, 2, 2, 1)):
         # z-stack
-        self.z_height = default_values_in_mm.z_height*1000
-        self.z_sep = default_values_in_mm.z_sep*1000
+        self.z_height = default_values_in_mm.z_height * 1000
+        self.z_sep = default_values_in_mm.z_sep * 1000
         self.z_slices = default_values_in_mm.z_slices
-        # TODO: parse default values and load them to widget.
+
         self.z_stack_config_widget = QtWidgets.QGroupBox("Z-Stack Configuration")
         self.z_stack_config_widget.setMaximumWidth(200)
         zstack_configuration_layout = QtWidgets.QGridLayout()
@@ -216,7 +238,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_stack_slice_sep_label = QtWidgets.QLabel('Separation:')
         self.z_stack_slice_sep_label.setMaximumWidth(95)
         self.z_stack_slice_sep_value = QtWidgets.QLineEdit()
-        self.z_stack_slice_sep_value.setText(f"{self.z_sep:.1f}" if self.z_sep else str(1)) # TODO: check
+        self.z_stack_slice_sep_value.setText(f"{self.z_sep:.1f}" if self.z_sep else str(1))  # TODO: check
         self.z_stack_slice_sep_value.setEnabled(False)
         self.z_stack_slice_sep_value.setMaximumWidth(65)
         self.z_stack_slice_sep_value.textChanged.connect(self.calculate_z_stack)
@@ -263,8 +285,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.__logger.warning(f"calculate_z_stack:  {e}")
 
     def get_z_stack_values_in_um(self):
-        z_height = self.z_stack_sample_depth_value.value()
-        z_sep = self.z_stack_slice_sep_value.value()
+        z_height = float(self.z_stack_sample_depth_value.text())
+        z_sep = float(self.z_stack_slice_sep_value.text())
         z_slices = self.z_stack_slices_value.value()
         z_stack_bool = bool(self.z_stack_checkbox_widget.isChecked())
         return z_height, z_sep, z_slices, z_stack_bool
@@ -274,15 +296,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             # z-stack
             self.z_stack_sample_depth_value.setEnabled(False)
             self.z_stack_slice_sep_value.setEnabled(True)
-            self.z_stack_slice_sep_value.valueChanged.connect(self.calculate_z_stack)
-            self.z_stack_sample_depth_value.valueChanged.disconnect(self.calculate_z_stack)
+            self.z_stack_slice_sep_value.textChanged.connect(self.calculate_z_stack)
+            self.z_stack_sample_depth_value.textChanged.disconnect(self.calculate_z_stack)
 
             # self.main_grid_layout.addWidget(self.ScanValueZmin, 1, 1, 1, 1) # Just use sample depth
         else:
             self.z_stack_sample_depth_value.setEnabled(True)
             self.z_stack_slice_sep_value.setEnabled(False)
-            self.z_stack_sample_depth_value.valueChanged.connect(self.calculate_z_stack)  # Connect valueChanged signal
-            self.z_stack_slice_sep_value.valueChanged.disconnect(self.calculate_z_stack)
+            self.z_stack_sample_depth_value.textChanged.connect(self.calculate_z_stack)  # Connect valueChanged signal
+            self.z_stack_slice_sep_value.textChanged.disconnect(self.calculate_z_stack)
 
         self.setLayout(self.main_grid_layout)
 
@@ -447,8 +469,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanActionsWidget.setLayout(exp_buttons_layout)
         self.main_grid_layout.addWidget(self.ScanActionsWidget, *options)
 
+    def update_scan_info_text(self, text):
+        self.ScanInfo.setText(text)
+        self.ScanInfo.setHidden(False)
+
     def init_experiment_info(self, options=(8, 0, 1, 1)):
         self.ScanInfo = QtWidgets.QLabel('')
+        self.sigScanInfoTextChanged.connect(self.update_scan_info_text)
         self.ScanInfo_widget = QtWidgets.QGroupBox("Scan Info")
         ScanInfo_layout = QtWidgets.QGridLayout()
         ScanInfo_layout.addWidget(self.ScanInfo)
@@ -462,7 +489,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self._deck_group_box = QtWidgets.QGroupBox("")
         self._deck_group_box.setMinimumHeight(40)
         layout = QtWidgets.QHBoxLayout()
-
+        self.sigLabwareSelect.connect(self.select_labware)
+        self.sigWellSelect.connect(self.select_well)
         # Create dictionary to hold buttons
         slots = [slot.id for slot in deck_manager.deck_layout.locations.orderedSlots]
 
@@ -502,13 +530,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.setLayout(self.main_grid_layout)
 
     def update_scan_info(self, dict_info):
-        # {
-        #     'experiment_status': self.state.value,
-        #     'scan_info': self.shared_context.scan_info,
-        #     'fluidics_info': self.shared_context.fluidic_info,
-        #     'position': self.shared_context.position,
-        #     'estimated_remaining_time': self.shared_context.remaining_time
-        # }
         self.ScanInfo.setText(dict_info["experiment_status"])
 
     def init_well_action(self, options=(1, 3, 2, 1)):
@@ -625,7 +646,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         return rows
 
     def confirm_start_run(self):
-        reply = QMessageBox.question(self, 'Run Experiment', f'The unsaved changes wont be reflected in the current run. Are you sure you want to continue?',
+        reply = QMessageBox.question(self, 'Run Experiment',
+                                     f'The unsaved changes wont be reflected in the current run. Are you sure you want to continue?',
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             return True
@@ -665,11 +687,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def updatePosition(self, positionerName, axis, position):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
         self.pars['Position' + parNameSuffix].setText(
-            f'<strong>{position:.3f} mm</strong>')  # TODO: depends if um or mm!
+            f'<strong>{position:.3f} mm</strong>')
 
     def updateSpeed(self, positionerName, axis, speed):
         parNameSuffix = self._getParNameSuffix(positionerName, axis)
-        self.pars['Speed' + parNameSuffix].setText(f'<strong>{speed} um/s</strong>')
+        self.pars['Speed' + parNameSuffix].setText(f'<strong>{speed} mm/s</strong>')
 
     def _getParNameSuffix(self, positionerName, axis):
         return f'{positionerName}--{axis}'
@@ -733,7 +755,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             "Absolute": ("position_x", "position_y", "position_z"),
             "Done": "checked"
         }
-        default_hidden = [6, 7]
+        default_hidden = [6]
         self.mapping = {}
         self.set_header()
         self.scan_list_items = 0
