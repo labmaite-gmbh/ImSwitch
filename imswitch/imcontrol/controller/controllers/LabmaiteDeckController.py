@@ -813,6 +813,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStartButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(False)
         self._widget.ScanStopButton.setEnabled(True)
+        self._widget.ScanSaveButton.setEnabled(False)
+        self._widget.adjust_all_focus_button.setEnabled(False)
         self.hide_widgets()
 
     def hide_widgets(self):
@@ -838,6 +840,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStartButton.setEnabled(True)
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
+        self._widget.ScanSaveButton.setEnabled(True)
+        self._widget.adjust_all_focus_button.setEnabled(True)
         self.show_widgets()
 
     def show_widgets(self):
