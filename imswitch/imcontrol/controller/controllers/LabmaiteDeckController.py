@@ -49,8 +49,8 @@ elif DEVICE == "UC2_INVESTIGATOR":
 
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
-    exp_name = r"bcall_20240125_251221.json"
-    exp_name_ = r"bcall_experiment_config_TEST.json"
+    exp_name = r"bcall_K562_test.json"
+
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
 from hardware_api.core.abcs import Camera
