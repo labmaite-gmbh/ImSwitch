@@ -3,7 +3,7 @@ import os
 import threading
 
 import time
-from copy import copy
+from copy import deepcopy
 
 from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
@@ -29,28 +29,25 @@ _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
 PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
-
+PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
-os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
+os.environ["DEBUG"] = "1"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
 MODULES = ['scan']
 # DEVICE AND EXPERIMENT:
 DEVICE: str = "UC2_INVESTIGATOR"  # "BTIG_A" or "UC2_INVESTIGATOR"
 if DEVICE == "BTIG_A":
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\locai_device_config.json"])
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\btig_small_experiment_config_TEST.json"])
+    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'locai_device_config.json'])
+    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'btig_small_experiment_config_TEST.json'])
     EXPERIMENT_JSON_PATH_ = os.sep.join(
-        [PROJECT_FOLDER, r"\config\updated_locai_experiment_config_TEST_multislot.json"])
+        [PROJECT_FOLDER, 'config', 'updated_locai_experiment_config_TEST_multislot.json'])
 elif DEVICE == "UC2_INVESTIGATOR":
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\uc2_stage_experiment_config_TEST.json"])
-    EXPERIMENT_JSON_PATH_ = os.sep.join([PROJECT_FOLDER, r"\config\grid_test_repeat.json"])
+    # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
+    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_device_config.json'])
 # APPLICATION SPECIFIC FEATURES
-
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
     exp_name = r"bcall_K562_test.json"
-
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
 from hardware_api.core.abcs import Camera
@@ -325,7 +322,7 @@ class LabmaiteDeckController(LiveUpdatedController):
                 if key not in count_dict:
                     count_dict[key] = set()
                 count_dict[key].add(unique_id)
-                row.position_in_well_index = len(count_dict[key])
+                row.position_in_well_index = len(count_dict[key]) - 1
         else:
             key = (self.scan_list[row].slot, self.scan_list[row].well)
             while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well):
@@ -356,14 +353,14 @@ class LabmaiteDeckController(LiveUpdatedController):
     def delete_position_in_list(self, row):
         deleted_point = self.scan_list.pop(row)
         self.exp_config.remove_pos_by_index(row)
-        # TODO: delete point from ExperimentConfig.
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
         self.update_beacons_index()
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def duplicate_position_in_list(self, row):
-        selected_scan_point = copy(self.scan_list[row])
+        selected_scan_point = deepcopy(self.scan_list[row])
+        self.exp_config.duplicate_pos_by_index(row)
         self.scan_list.insert(row, selected_scan_point)
         self.__logger.debug(f"Duplicating Position in row {row}: {self.scan_list[row]}")
         self.update_beacons_index(row)
@@ -384,10 +381,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         if (x_old, y_old, z_old) == p.as_tuple():
             self.__logger.warning(f"Adjusting Position: same position selected.")
             return
-        self.exp_config.update_pos_by_index(row)
         self.update_row_from_point(row=row, point=p)
+        self.exp_config.update_pos_by_index(row, p)
         self.__logger.debug(f"Adjusting Position: {(x_old, y_old, z_old)} -> {p.as_tuple()}")
-        self.update_beacons_index()
+        self.update_beacons_index(row)
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
@@ -860,7 +857,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == "BCALL":
             self.save_zstack_params()
         self.save_scan_list_to_json()
-
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()
