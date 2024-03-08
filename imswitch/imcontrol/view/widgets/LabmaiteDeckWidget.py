@@ -23,6 +23,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigScanStop = QtCore.Signal(bool)  # (enabled)
     sigScanStart = QtCore.Signal(bool)  # (enabled)
     sigScanSave = QtCore.Signal()
+    sigScanOpen = QtCore.Signal()
 
     sigStepAbsoluteClicked = QtCore.Signal(str)
     sigHomeAxisClicked = QtCore.Signal(str, str)
@@ -44,7 +45,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
-
+        self.setMaximumWidth(800)
+        self.setMinimumWidth(600)
         self.numPositioners = 0
         self.pars = {}
         self.main_grid_layout = QtWidgets.QGridLayout()
@@ -61,6 +63,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         for row_i, row_values in enumerate(scan_list):
             self.scan_list.add_row_in_widget(row_i, row_values)
             self.scan_list_items += 1
+
+    def display_open_file_window(self):
+        options = QtWidgets.QFileDialog.Options()
+
+        path = QtWidgets.QFileDialog.getOpenFileName(
+            self, 'Open File', '', 'JSON(*.json)', options=options)
+        return path[0]
 
     def display_save_file_window(self):
         path = QtWidgets.QFileDialog.getSaveFileName(
@@ -220,7 +229,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_slices = default_values_in_mm.z_slices
 
         self.z_stack_config_widget = QtWidgets.QGroupBox("Z-Stack Configuration")
-        self.z_stack_config_widget.setMaximumWidth(200)
+        self.z_stack_config_widget.setMinimumWidth(150)
+        self.z_stack_config_widget.setMaximumWidth(180)
+        self.z_stack_config_widget.setContentsMargins(0, 0, 0, 0)
         zstack_configuration_layout = QtWidgets.QGridLayout()
 
         self.z_stack_checkbox_widget = QtWidgets.QCheckBox('Depth/Separation [um]')
@@ -435,40 +446,74 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanActionsWidget = QtWidgets.QGroupBox("Scan List Actions")
         self.ScanSaveButton = guitools.BetterPushButton('Save')
         self.ScanSaveButton.setStyleSheet("font-size: 14px")
-        self.ScanSaveButton.setFixedHeight(35)
-        self.ScanSaveButton.setMinimumWidth(40)
+        self.ScanSaveButton.setFixedHeight(30)
+        self.ScanSaveButton.setMaximumWidth(80)
         self.ScanSaveButton.setCheckable(False)
         self.ScanSaveButton.toggled.connect(self.sigScanSave)
 
+        self.ScanOpenButton = guitools.BetterPushButton('Open')
+        self.ScanOpenButton.setStyleSheet("font-size: 14px")
+        self.ScanOpenButton.setFixedHeight(30)
+        self.ScanOpenButton.setMaximumWidth(80)
+        self.ScanOpenButton.setCheckable(False)
+        self.ScanOpenButton.toggled.connect(self.sigScanOpen)
+
         self.ScanStartButton = guitools.BetterPushButton('Start')
         self.ScanStartButton.setStyleSheet("background-color: black; font-size: 14px")
-        self.ScanStartButton.setFixedHeight(35)
-        self.ScanStartButton.setMinimumWidth(40)
+        self.ScanStartButton.setFixedHeight(30)
+        self.ScanStartButton.setMaximumWidth(80)
         self.ScanStartButton.setCheckable(False)
         self.ScanStartButton.toggled.connect(self.sigScanStart)
 
         self.ScanStopButton = guitools.BetterPushButton('Stop')
         self.ScanStopButton.setStyleSheet("background-color: gray; font-size: 14px")
-        self.ScanStopButton.setFixedHeight(35)
-        self.ScanStopButton.setMinimumWidth(40)
+        self.ScanStopButton.setFixedHeight(30)
+        self.ScanStopButton.setMaximumWidth(80)
         self.ScanStopButton.setCheckable(False)
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
 
         self.adjust_all_focus_button = guitools.BetterPushButton('Focus All')
         self.adjust_all_focus_button.setStyleSheet("font-size: 14px")
-        self.adjust_all_focus_button.setFixedHeight(35)
+        self.adjust_all_focus_button.setFixedHeight(30)
         self.adjust_all_focus_button.setMinimumWidth(40)
+
+        self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets")
+        self.OffsetsWidgets.setFixedHeight(60)
+        offset_buttons_layout = QtWidgets.QGridLayout()
+
+        self.x_offset_all_value = QtWidgets.QLineEdit()
+        self.x_offset_all_value.setText(f"{0:.2f}")
+        self.x_offset_all_value.setEnabled(True)
+        self.x_offset_all_value.setFixedWidth(50)
+
+        self.y_offset_all_value = QtWidgets.QLineEdit()
+        self.y_offset_all_value.setText(f"{0:.2f}")
+        self.y_offset_all_value.setEnabled(True)
+        self.y_offset_all_value.setFixedWidth(50)
+
+        self.adjust_offset_button = guitools.BetterPushButton('Set!')
+        self.adjust_offset_button.setStyleSheet("font-size: 14px")
+        self.adjust_offset_button.setMinimumWidth(90)
+
+        offset_buttons_layout.addWidget(self.x_offset_all_value, 0, 0, 1, 1)
+        offset_buttons_layout.addWidget(self.y_offset_all_value, 0, 1, 1, 1)
+        offset_buttons_layout.addWidget(self.adjust_offset_button, 0, 2, 1, 1)
+        self.OffsetsWidgets.setLayout(offset_buttons_layout)
 
         exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
         exp_buttons_layout.addWidget(self.ScanStopButton, 0, 1, 1, 1)
-        exp_buttons_layout.addWidget(self.adjust_all_focus_button, 1, 1, 1, 1)
         exp_buttons_layout.addWidget(self.ScanSaveButton, 1, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.ScanOpenButton, 1, 1, 1, 1)
+        exp_buttons_layout.addWidget(self.OffsetsWidgets, 2, 0, 1, 2)
+
         self.ScanActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)
-        # self.ScanActionsWidget.setMaximumHeight(160)
         self.ScanActionsWidget.setLayout(exp_buttons_layout)
         self.main_grid_layout.addWidget(self.ScanActionsWidget, *options)
+
+    def get_offset_all(self):
+        return float(self.x_offset_all_value.text()), float(self.y_offset_all_value.text())
 
     def update_scan_info_text(self, text):
         self.ScanInfo.setText(text)
@@ -476,8 +521,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def init_experiment_info(self, options=(8, 0, 1, 1)):
         self.ScanInfo = QtWidgets.QLabel('')
+        self.ScanInfo.setWordWrap(True)
         self.sigScanInfoTextChanged.connect(self.update_scan_info_text)
         self.ScanInfo_widget = QtWidgets.QGroupBox("Scan Info")
+        self.ScanInfo_widget.setMaximumWidth(200)
         ScanInfo_layout = QtWidgets.QGridLayout()
         ScanInfo_layout.addWidget(self.ScanInfo)
         self.ScanInfo_widget.setLayout(ScanInfo_layout)
