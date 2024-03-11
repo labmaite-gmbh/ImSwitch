@@ -31,7 +31,7 @@ _objectiveRadius = 29.0 / 2  # Olympus
 PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
 PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
-os.environ["DEBUG"] = "1"  # 1 for debug/Mocks, 2 for real device
+os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
 MODULES = ['scan']
 # DEVICE AND EXPERIMENT:
@@ -47,8 +47,14 @@ elif DEVICE == "UC2_INVESTIGATOR":
 # APPLICATION SPECIFIC FEATURES
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
-    exp_name = r"bcall_K562_test.json"
+    exp_name = r"bcall_bcells_concentrations_medium_static.json" # r"bcall_K562_test.json"
+
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
+
+# os.environ["APP"] = "ICARUS"  # BCALL only for now
+# if os.environ["APP"] == "ICARUS":
+#     exp_name = r"icarus_96_halftime_test.json"
+#     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
 from hardware_api.core.abcs import Camera
 from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
@@ -287,7 +293,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.initialize_deck(self.exp_context.device.stage.deck_manager, [(1, 0, 3, 3), (2, 4, 1, 1)])
         self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 2, 1))
         self._widget.init_scan_list((7, 0, 2, 5))
-        if "BCALL" in os.environ["APP"]:
+        if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
             self._widget.init_z_scan_widget((3, 3, 1, 2))
             self._widget.init_experiment_info((4, 0, 2, 2))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params,
@@ -718,6 +724,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         positioner = self.exp_context.device.stage
         self.__logger.debug(f"Move to {well} ({slot})")
         position = Point(z=positioner.position().z)
+        if well is None:
+            return
 
         def move_from_well_update():
             positioner.move_from_well(str(slot), well, position)
@@ -760,7 +768,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def set_z_slice_value(self, value):
         try:
             value = float(value)
-            self._widget.z_scan_zpos_widget.setText(f"{value:.3f}")
+            self._widget.z_scan_zpos_widget.setText(f"{value:.3f}") # TODO: change to signal!!
         except Exception as e:
             self.__logger.warning(f"Exception set_z_slice_value: {e}")
 
@@ -822,7 +830,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.home_button_widget.hide()
         self._widget.well_action_widget.hide()
         self._widget.scan_list.context_menu_enabled = False
-        if os.environ["APP"] == "BCALL":
+        if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.hide()
             self._widget.z_stack_config_widget.hide()
 
@@ -849,12 +857,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.home_button_widget.show()
         self._widget.well_action_widget.show()
         self._widget.scan_list.context_menu_enabled = True
-        if os.environ["APP"] == "BCALL":
+        if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.show()
             self._widget.z_stack_config_widget.show()
 
     def save_experiment_config(self):
-        if os.environ["APP"] == "BCALL":
+        if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
         self.save_scan_list_to_json()
 

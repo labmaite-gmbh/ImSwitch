@@ -42,6 +42,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigLabwareSelect = QtCore.Signal(str)
     sigWellSelect = QtCore.Signal(str)
 
+    sigZPositionUpdate = QtCore.Signal(str)
+
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
 
