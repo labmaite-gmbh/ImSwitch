@@ -9,6 +9,7 @@ from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
+from memory_profiler import profile
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -29,7 +30,7 @@ _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
 PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
-PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
+# PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
@@ -274,6 +275,30 @@ class LabmaiteDeckController(LiveUpdatedController):
                 file.write(self.exp_config.json(indent=4))
             self._widget.sigScanInfoTextChanged.emit(f"Saved changes to {os.path.split(path)[1]}")
             self.__logger.debug(f"Saved file to {path}")
+            self.__logger.debug(f"Experiment Config: {self.exp_config}")
+        except Exception as e:
+            self.__logger.debug(f"No file selected. {e}")
+
+    def open_experiment_config(self):
+        path = self._widget.display_open_file_window()
+        try:
+            self.exp_config = self.load_experiment_config_from_json(path)
+            dev = self.init_device()
+            self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
+                                                 callback_info=self.update_scan_info)
+            self.exp_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
+            self.load_scan_list_from_cfg(self.exp_config)
+            # Deck and Labwares definitions:
+            self.objective_radius = _objectiveRadius
+            self.selected_well = None
+            self.selected_slot = None
+            self.relative_focal_plane = None
+            self.preview_z_pos = None
+            self.preview_images = None
+            self.initialize_widget()
+            self.update_list_in_widget()
+            self._widget.sigSliderValueChanged.connect(self.value_light_changed)
+            self._widget.sigScanInfoTextChanged.emit(f"Opened {os.path.split(path)[1]}")
             self.__logger.debug(f"Experiment Config: {self.exp_config}")
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
@@ -749,6 +774,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStartButton.clicked.connect(self.start_scan)
         self._widget.ScanStopButton.clicked.connect(self.stop_scan)
         self._widget.ScanSaveButton.clicked.connect(self.save_experiment_config)
+        self._widget.ScanOpenButton.clicked.connect(self.open_experiment_config)
+        self._widget.adjust_offset_button.clicked.connect(self.adjust_all_offsets)
         self._widget.home_button.clicked.connect(self.home)
         self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
         self.connect_wells()
@@ -820,6 +847,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(True)
         self._widget.ScanSaveButton.setEnabled(False)
         self._widget.adjust_all_focus_button.setEnabled(False)
+        self._widget.adjust_offset_button.setEnabled(False)
         self.hide_widgets()
 
     def hide_widgets(self):
@@ -833,6 +861,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.hide()
             self._widget.z_stack_config_widget.hide()
+            self._widget.OffsetsWidgets.hide()
 
     def stop_scan(self):
         # if hasattr(self.exp_context, "shared_context"):
@@ -847,6 +876,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.adjust_all_focus_button.setEnabled(True)
+        self._widget.adjust_offset_button.setEnabled(True)
         self.show_widgets()
 
     def show_widgets(self):
@@ -860,11 +890,29 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.show()
             self._widget.z_stack_config_widget.show()
+            self._widget.OffsetsWidgets.show()
 
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
         self.save_scan_list_to_json()
+
+    def adjust_all_offsets(self):
+        x, y = self._widget.get_offset_all()
+        self._adjust_all_offsets(x, y)
+        self.update_list_in_widget()
+        self.__logger.debug(f"Adjusting Offsets: X_offset = {x} mm, Y_offset = {y} mm")
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
+
+    def _adjust_all_offsets(self, x: float = 0, y: float = 0):
+        for row in range(len(self.scan_list)):
+            self.scan_list[row].offset_from_center_x += x
+            self.scan_list[row].offset_from_center_y += y
+            self.scan_list[row].point.x += x
+            self.scan_list[row].point.y += y
+            self.scan_list[row].position_x += x
+            self.scan_list[row].position_y += y
+
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()
