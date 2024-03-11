@@ -203,11 +203,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             if 0 in pos:
                 self.wells[corrds] = QtWidgets.QLabel(text=str(corrds))  # QtWidgets.QPushButton(corrds)
                 # self.wells[corrds].setFixedSize(25, 20)
-                # self.wells[corrds].setMaximumSize(30, 25)
+                self.wells[corrds].setMaximumSize(30, 25)
                 self.wells[corrds].setStyleSheet("background-color: None; font-size: 12px")
             else:
                 self.wells[corrds] = guitools.BetterPushButton(corrds)  # QtWidgets.QPushButton(corrds)
-                # self.wells[corrds].setMaximumSize(30, 25)
+                self.wells[corrds].setMaximumSize(30, 25)
                 self.wells[corrds].setStyleSheet("background-color: grey; font-size: 14px")
             self.wells[corrds].setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)

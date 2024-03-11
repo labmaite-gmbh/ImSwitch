@@ -9,6 +9,7 @@ from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
+from memory_profiler import profile
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -838,6 +839,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(True)
         self._widget.ScanSaveButton.setEnabled(False)
         self._widget.adjust_all_focus_button.setEnabled(False)
+        self._widget.adjust_offset_button.setEnabled(False)
         self.hide_widgets()
 
     def hide_widgets(self):
@@ -851,6 +853,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == "BCALL":
             self._widget._z_scan_box.hide()
             self._widget.z_stack_config_widget.hide()
+            self._widget.OffsetsWidgets.hide()
 
     def stop_scan(self):
         # if hasattr(self.exp_context, "shared_context"):
@@ -865,6 +868,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(False)
         self._widget.ScanSaveButton.setEnabled(True)
         self._widget.adjust_all_focus_button.setEnabled(True)
+        self._widget.adjust_offset_button.setEnabled(True)
         self.show_widgets()
 
     def show_widgets(self):
@@ -878,6 +882,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == "BCALL":
             self._widget._z_scan_box.show()
             self._widget.z_stack_config_widget.show()
+            self._widget.OffsetsWidgets.show()
 
     def save_experiment_config(self):
         if os.environ["APP"] == "BCALL":
