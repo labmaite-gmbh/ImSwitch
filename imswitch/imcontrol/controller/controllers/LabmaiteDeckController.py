@@ -29,8 +29,8 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
-PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
-# PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
+# PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
+PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
@@ -44,11 +44,13 @@ if DEVICE == "BTIG_A":
         [PROJECT_FOLDER, 'config', 'updated_locai_experiment_config_TEST_multislot.json'])
 elif DEVICE == "UC2_INVESTIGATOR":
     # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_device_config.json'])
+    # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_device_config.json'])
+    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_sturdy_config.json'])
 # APPLICATION SPECIFIC FEATURES
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
     exp_name = r"bcall_bcells_concentrations_medium_static.json" # r"bcall_K562_test.json"
+    exp_name = r"bcall_experiment_config_TEST.json" # r"bcall_K562_test.json"
 
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
@@ -140,7 +142,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         camera = CameraWrapper(imswitch_camera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
-        device.stage.home() if DEVICE == "UC2_INVESTIGATOR" else ...
+        # device.stage.home() if DEVICE == "UC2_INVESTIGATOR" else ...
         return device
 
     def update_scan_info(self, dict_info):
@@ -313,8 +315,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_experiment_buttons((4, 4, 1, 1))
         self._widget.init_experiment_info((4, 0, 2, 3))
         self._widget.init_home_button((1, 4, 1, 1))
+        self._widget.init_park_button((1, 3, 1, 1))
         # self._widget.init_light_source((3, 3, 1, 2))
-        self._widget.init_well_action((1, 3, 2, 1))
+        self._widget.init_well_action((2, 3, 1, 1))
         self._widget.initialize_deck(self.exp_context.device.stage.deck_manager, [(1, 0, 3, 3), (2, 4, 1, 1)])
         self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 2, 1))
         self._widget.init_scan_list((7, 0, 2, 5))
@@ -608,6 +611,21 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.__logger.info(f"Avoiding objective collision. {e}")
             self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
 
+
+    def park(self) -> None:
+        positioner = self.exp_context.device.stage
+        try:
+            def park_update():
+                positioner.park()
+                self.update_position(positioner)
+                self.select_labware(slot=self.selected_slot)
+                self.select_well(well=None)
+
+            threading.Thread(target=park_update, daemon=True).start()
+        except Exception as e:
+            self.__logger.info(f"Avoiding objective collision. {e}")
+            self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
+
     def zero(self):
         positioner = self.exp_context.device.stage
         if not len(self.scan_list):
@@ -777,6 +795,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanOpenButton.clicked.connect(self.open_experiment_config)
         self._widget.adjust_offset_button.clicked.connect(self.adjust_all_offsets)
         self._widget.home_button.clicked.connect(self.home)
+        self._widget.park_button.clicked.connect(self.park)
         self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
