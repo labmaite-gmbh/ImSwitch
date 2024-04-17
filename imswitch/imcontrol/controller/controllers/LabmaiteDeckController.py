@@ -51,6 +51,7 @@ os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
     exp_name = r"bcall_bcells_concentrations_medium_static.json" # r"bcall_K562_test.json"
     exp_name = r"bcall_experiment_config_TEST.json" # r"bcall_K562_test.json"
+    exp_name = r"Test96WellPlate1.json"
 
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
