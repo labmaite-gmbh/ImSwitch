@@ -580,6 +580,24 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.main_grid_layout.addWidget(self.home_button_widget, *options)
         self.setLayout(self.main_grid_layout)
 
+    def init_park_button(self, options=(2, 2, 1, 1)):
+        self.park_button_widget = QtWidgets.QGroupBox("Stage")
+        self.park_button_widget.setMinimumWidth(45)
+        self.park_button_widget.setMinimumHeight(50)
+        self.park_button_widget.setMaximumHeight(60)
+        park_button_layout = QtWidgets.QGridLayout()
+        self.park_button = guitools.BetterPushButton(text="PARK")  # QtWidgets.QPushButton(corrds)
+        self.park_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                       QtWidgets.QSizePolicy.Expanding)
+        self.park_button.setMinimumWidth(35)
+        self.park_button.setMinimumHeight(30)
+        self.park_button.setMaximumHeight(35)
+        self.park_button.setStyleSheet("background-color: black; font-size: 14px")
+        park_button_layout.addWidget(self.park_button)
+        self.park_button_widget.setLayout(park_button_layout)
+        self.main_grid_layout.addWidget(self.park_button_widget, *options)
+        self.setLayout(self.main_grid_layout)
+
     def update_scan_info(self, dict_info):
         self.ScanInfo.setText(dict_info["experiment_status"])
 
