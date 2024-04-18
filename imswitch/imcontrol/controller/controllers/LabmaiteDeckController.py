@@ -9,7 +9,6 @@ from qtpy import QtCore, QtWidgets, QtGui
 from functools import partial
 from typing import Union, Dict, Tuple, List, Optional, Callable
 import numpy as np
-from memory_profiler import profile
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -28,8 +27,11 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
+# "/home/worker5/Documents/repositories
+REPO_DIR = r"C:\Users\locai\Documents\LABMaiTE_repositories"
+
 # PROJECT FOLDER:
-PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
+PROJECT_FOLDER = os.sep.join([REPO_DIR, "locai-impl"])
 # PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
@@ -39,7 +41,8 @@ MODULES = ['scan']
 DEVICE: str = "UC2_INVESTIGATOR"  # "BTIG_A" or "UC2_INVESTIGATOR"
 if DEVICE == "BTIG_A":
     DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'locai_device_config.json'])
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'btig_small_experiment_config_TEST.json'])
+    # EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'btig_small_experiment_config_TEST.json'])
+    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'bcall_static_v2_DEBUG.json'])
     EXPERIMENT_JSON_PATH_ = os.sep.join(
         [PROJECT_FOLDER, 'config', 'updated_locai_experiment_config_TEST_multislot.json'])
 elif DEVICE == "UC2_INVESTIGATOR":
@@ -48,8 +51,8 @@ elif DEVICE == "UC2_INVESTIGATOR":
 # APPLICATION SPECIFIC FEATURES
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
-    exp_name = r"bcall_bcells_concentrations_medium_static.json" # r"bcall_K562_test.json"
-
+    # exp_name = "BCALL_TEST_SCAN.json"
+    exp_name = "BCALL_DNR_D7.json"
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
 # os.environ["APP"] = "ICARUS"  # BCALL only for now
@@ -121,6 +124,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.initialize_widget()
         self.update_list_in_widget()
         self._widget.sigSliderValueChanged.connect(self.value_light_changed)
+        self._widget.sigScanInfoTextChanged.emit(f"Opened {os.path.split(EXPERIMENT_JSON_PATH)[1]}")
 
     def init_device(self):
         if DEVICE == "UC2_INVESTIGATOR":
@@ -140,6 +144,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         camera = CameraWrapper(imswitch_camera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
+        # TODO: home temporally disabled
         device.stage.home() if DEVICE == "UC2_INVESTIGATOR" else ...
         return device
 
