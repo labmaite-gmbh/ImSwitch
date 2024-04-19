@@ -364,12 +364,9 @@ class LabmaiteDeckController(LiveUpdatedController):
                 row.position_in_well_index = len(count_dict[key]) - 1
         else:
             key = (self.scan_list[row].slot, self.scan_list[row].well)
-            if len(self.scan_list) == 1:
-                self.scan_list[row].position_in_well_index += 1
-            else:
-                while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well): # TODO: fix bug with single element list
-                    self.scan_list[row + 1].position_in_well_index += 1
-                    row += 1
+            while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well):
+                self.scan_list[row + 1].position_in_well_index += 1
+                row += 1
 
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
