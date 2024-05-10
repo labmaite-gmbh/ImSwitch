@@ -1,15 +1,16 @@
 import datetime
+import json
 import os
 import threading
 
 import time
 from copy import deepcopy
 
-from qtpy import QtCore, QtWidgets, QtGui
+
+from qtpy import QtCore
 from functools import partial
-from typing import Union, Dict, Tuple, List, Optional, Callable
-import numpy as np
-from memory_profiler import profile
+from typing import Union, List
+
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -18,7 +19,6 @@ from imswitch.imcontrol.view import guitools as guitools
 from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
 from imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
 from imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
-from imswitch.imcommon.framework.qt import Thread
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -28,38 +28,71 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
-# PROJECT FOLDER:
-PROJECT_FOLDER = r"C:\Users\locai\Documents\LABMaiTE_repositories\locai-impl"
-if not os.path.exists(PROJECT_FOLDER):
-    raise NotADirectoryError(f"Project folder does not exist: {PROJECT_FOLDER}")
-# PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
-# MODE:
-os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
-# MODULES:
-MODULES = ['scan']
-# DEVICE AND EXPERIMENT:
-DEVICE: str = "UC2_INVESTIGATOR"  # "BTIG_A" or "UC2_INVESTIGATOR"
-if DEVICE == "BTIG_A":
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'locai_device_config.json'])
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'btig_small_experiment_config_TEST.json'])
-    EXPERIMENT_JSON_PATH_ = os.sep.join(
-        [PROJECT_FOLDER, 'config', 'updated_locai_experiment_config_TEST_multislot.json'])
-elif DEVICE == "UC2_INVESTIGATOR":
-    # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
-    DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_sturdy_config.json'])
-# APPLICATION SPECIFIC FEATURES
-os.environ["APP"] = "BCALL"  # BCALL only for now
-if os.environ["APP"] == "BCALL":
-    # exp_name = r"bcall_bcells_concentrations_medium_static.json"  # r"bcall_K562_test.json"
-    # exp_name = r"BCALL_JURKAT_RCH-ACV.json"
-    exp_name = r"BCALL_JURKAT_RCH-ACV__4h.json"
+from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
 
-    EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
+wizard = InitializationWizard()
+wizard.widget.exec_()
 
-# os.environ["APP"] = "ICARUS"  # BCALL only for now
-# if os.environ["APP"] == "ICARUS":
-#     exp_name = r"icarus_96_halftime_test.json"
-#     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
+
+def load_configuration_file(file_path):
+    with open(file_path, "r") as file:
+        data = json.load(file)
+
+    # Set environment variables
+    if not os.path.exists(data['PROJECT_FOLDER']):
+        raise NotADirectoryError(f"Project folder does not exist: {os.environ['']}")
+    else:
+        os.environ["PROJECT_FOLDER"] = data['PROJECT_FOLDER']
+
+    if data['DEBUG'] not in ["1", "2"]:
+        raise ValueError(
+            f"´Debug mode {data['DEBUG']} not available. Available modes: '1' for debug/Mocks, '2' for real device")
+    else:
+        os.environ['DEBUG'] = data['DEBUG']
+
+    if data["APP"] not in ["BCALL", "LOCAI", "ICARUS"]:
+        raise ValueError(
+            f"Selected application {data['APP']} not available. Available APPS: {['BCALL', 'LOCAI', 'ICARUS']}")
+    else:
+        os.environ["APP"] = data["APP"]
+
+    if not os.path.exists(data["DEVICE_JSON_PATH"]):
+        if not os.path.exists(
+                os.sep.join([os.environ["PROJECT_FOLDER"], "config", "device", data["DEVICE_JSON_PATH"]])):
+            raise NotADirectoryError(f"Device does not exist: {data['DEVICE_JSON_PATH']}")
+        else:
+            os.environ["DEVICE_JSON_PATH"] = os.sep.join(
+                [os.environ["PROJECT_FOLDER"], "config", "device", data["DEVICE_JSON_PATH"]])
+    else:
+        os.environ["DEVICE_JSON_PATH"] = data["DEVICE_JSON_PATH"]
+
+    if not os.path.exists(data["EXPERIMENT_JSON_PATH"]):
+        if not os.path.exists(
+                os.sep.join([os.environ["PROJECT_FOLDER"], "config", "experiment", data["EXPERIMENT_JSON_PATH"]])):
+            raise NotADirectoryError(f"Experiment does not exist: {data['EXPERIMENT_JSON_PATH']}")
+        else:
+            os.environ["EXPERIMENT_JSON_PATH"] = os.sep.join(
+                [os.environ["PROJECT_FOLDER"], "config", "experiment", data["EXPERIMENT_JSON_PATH"]])
+    else:
+        os.environ["EXPERIMENT_JSON_PATH"] = data["EXPERIMENT_JSON_PATH"]
+
+    # Additional handling for MODULES and DEVICE based on your code
+    for module in data["MODULES"]:
+        if module not in ["scan", "analysis", "fluidics"]:
+            raise ValueError(
+                f"´{data['MODULES']} module not available. Available modules: ['scan', 'analysis', 'fluidics']")
+
+    if data["DEVICE"] not in ["UC2_INVESTIGATOR", "BTIG_A"]:
+        raise ValueError(
+            f"´{data['DEVICE']} device not available. Available devices: ['UC2_INVESTIGATOR', 'BTIG_A']")
+    else:
+        os.environ["DEVICE"] = data["DEVICE"]
+    return data
+
+
+file_path = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\repositories\ImSwitch\labmaite_config.json"
+data = load_configuration_file(file_path)
+MODULES = data['MODULES']
 
 from hardware_api.core.abcs import Camera
 from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
@@ -108,11 +141,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         super().__init__(*args, **kwargs)
         self.__logger = initLogger(self, instanceName="DeckController")
         start = time.time()
-        self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
+        self.exp_config = self.load_experiment_config_from_json(os.environ['EXPERIMENT_JSON_PATH'])
         dev = self.init_device(home_on_start=True)
         self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                              callback_info=self.update_scan_info)
-        self.exp_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
+        self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
         self.load_scan_list_from_cfg(self.exp_config)
         print(f"init LabmaiteDeck {time.time() - start:.3f} seconds")
         # Deck and Labwares definitions:
@@ -126,17 +159,17 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.update_list_in_widget()
         self._widget.sigSliderValueChanged.connect(self.value_light_changed)
 
-    def init_device(self, home_on_start = False):
-        if DEVICE == "UC2_INVESTIGATOR":
+    def init_device(self, home_on_start=False):
+        if os.environ['DEVICE'] == "UC2_INVESTIGATOR":
             from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
-            cfg_device = CfgDevice.parse_file(DEVICE_JSON_PATH)
+            cfg_device = CfgDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
             device: UC2Device = create_device(cfg_device)
-        elif DEVICE == "BTIG_A":
+        elif os.environ['DEVICE'] == "BTIG_A":
             from locai_app.impl.btig_a import create_device, BTIGDevice, CfgBTIGDevice
-            cfg_device = CfgBTIGDevice.parse_file(DEVICE_JSON_PATH)
+            cfg_device = CfgBTIGDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
             device: BTIGDevice = create_device(cfg_device)
         else:
-            raise ValueError(f"Unrecognized device {DEVICE}")
+            raise ValueError(f"Unrecognized device {os.environ['DEVICE']}")
         device.initialize()
         device.load_labwares(self.exp_config.slots)
         start = time.time()
@@ -144,7 +177,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         camera = CameraWrapper(imswitch_camera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
-        if DEVICE == "UC2_INVESTIGATOR" and home_on_start:
+        if os.environ['DEVICE'] == "UC2_INVESTIGATOR" and home_on_start:
             # TODO: understand weird z behaviour on start
             p = device.stage.position()
             print(f"Z={p.z} mm")
@@ -245,7 +278,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         except Exception as e:
             raise e
 
-    def load_experiment_config_from_json(self, file=EXPERIMENT_JSON_PATH):
+    def load_experiment_config_from_json(self, file):
         return ExperimentConfig.parse_file(file)
 
     def closeEvent(self):
@@ -304,7 +337,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             dev = self.init_device()
             self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                                  callback_info=self.update_scan_info)
-            self.exp_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
+            self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
             self.load_scan_list_from_cfg(self.exp_config)
             # Deck and Labwares definitions:
             self.objective_radius = _objectiveRadius
@@ -378,7 +411,9 @@ class LabmaiteDeckController(LiveUpdatedController):
             if len(self.scan_list) == 1:
                 self.scan_list[row].position_in_well_index += 1
             else:
-                while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well): # TODO: fix bug with single element list
+                while key == (
+                        self.scan_list[row + 1].slot,
+                        self.scan_list[row + 1].well):  # TODO: fix bug with single element list
                     self.scan_list[row + 1].position_in_well_index += 1
                     row += 1
 
@@ -556,13 +591,14 @@ class LabmaiteDeckController(LiveUpdatedController):
         # Has control over positioner
         self.positioner_name = self._master.positionersManager.getAllDeviceNames()[0]
         # Set up positioners
+        symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
         for pName, pManager in self._master.positionersManager:
             if not pManager.forPositioning:
                 continue
             hasSpeed = hasattr(pManager, 'speed')
             hasHome = hasattr(pManager, 'home')
             hasStop = hasattr(pManager, 'stop')
-            self._widget.addPositioner(pName, pManager.axes, hasSpeed, hasHome, hasStop, options)
+            self._widget.addPositioner(pName, pManager.axes, hasSpeed, hasHome, hasStop, symbols, options)
             for axis in pManager.axes:
                 self.setSharedAttr(axis, _positionAttr, pManager.position[axis])
                 if hasSpeed:
@@ -629,7 +665,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         except Exception as e:
             self.__logger.info(f"Avoiding objective collision. {e}")
             self._widget.sigScanInfoTextChanged.emit("Avoiding objective collision.")
-
 
     def park(self) -> None:
         positioner = self.exp_context.device.stage
@@ -833,7 +868,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def set_z_slice_value(self, value):
         try:
             value = float(value)
-            self._widget.z_scan_zpos_widget.setText(f"{value:.3f}") # TODO: change to signal!!
+            self._widget.z_scan_zpos_widget.setText(f"{value:.3f}")  # TODO: change to signal!!
         except Exception as e:
             self.__logger.warning(f"Exception set_z_slice_value: {e}")
 
@@ -853,8 +888,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        z_end = float(self._widget.well_base_widget.text())
-        z_start = float(self._widget.well_top_widget.text())
+        z_start = float(self._widget.well_base_widget.text())
+        z_end = float(self._widget.well_top_widget.text())
         z_step = float(self._widget.z_scan_step_widget.text())
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
@@ -950,7 +985,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].point.y += y
             self.scan_list[row].position_x += x
             self.scan_list[row].position_y += y
-
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()

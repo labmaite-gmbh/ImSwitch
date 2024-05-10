@@ -1,7 +1,8 @@
+import json
 from typing import Optional
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCheckBox, QMessageBox
+from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog
 
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
@@ -60,7 +61,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.__logger = initLogger(self, instanceName="DeckWidget")
 
     def update_scan_list(self, scan_list):
-        self.scan_list.clear_scan_list()
+        # self.scan_list.clear_scan_list()
+        self.scan_list.clear()
         self.scan_list.set_header()
         for row_i, row_values in enumerate(scan_list):
             self.scan_list.add_row_in_widget(row_i, row_values)
@@ -83,7 +85,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.updatePosition(positioner_name, "Y", y_pos)
         self.updatePosition(positioner_name, "Z", z_pos)
 
-    def addPositioner(self, positionerName, axes, hasSpeed, hasHome=True, hasStop=True, options=(0, 0, 1, 1)):
+    def addPositioner(self, positionerName, axes, hasSpeed, hasHome=True, hasStop=True, symbols=None,
+                      options=(0, 0, 1, 1)):
         self._positioner_widget = QtWidgets.QGroupBox(f"{positionerName}")
         layout = QtWidgets.QGridLayout()
         self.sigPositionUpdate.connect(self.update_stage_position)
@@ -91,13 +94,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             axis = axes[i]
             parNameSuffix = self._getParNameSuffix(positionerName, axis)
             # label = f'{positionerName} -- {axis}' if positionerName != axis else positionerName
-
             self.pars['Label' + parNameSuffix] = QtWidgets.QLabel(f'<strong>{axis}</strong>')
             self.pars['Label' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
             self.pars['Position' + parNameSuffix] = QtWidgets.QLabel(f'<strong>{0:.2f} mm</strong>')
             self.pars['Position' + parNameSuffix].setTextFormat(QtCore.Qt.RichText)
-            self.pars['UpButton' + parNameSuffix] = guitools.BetterPushButton('+')
-            self.pars['DownButton' + parNameSuffix] = guitools.BetterPushButton('-')
+            self.pars['UpButton' + parNameSuffix] = guitools.BetterPushButton(
+                symbols[axis][0] if symbols is not None else "+")
+            self.pars['DownButton' + parNameSuffix] = guitools.BetterPushButton(
+                symbols[axis][1] if symbols is not None else "-")
             if axis == "Z":
                 self.pars['StepEdit' + parNameSuffix] = QtWidgets.QLineEdit('0.1')
             else:
@@ -780,6 +784,8 @@ class MyDelegate(QStyledItemDelegate):
             option = QStyleOptionViewItem(option)
             self.initStyleOption(option, index)
             widget = option.widget
+            if widget is None:
+                return
             # TODO: fix hardcoded
             # Get the checkbox size
             checkbox_size = widget.cellWidget(index.row(), widget.columns.index("Done")).sizeHint()
@@ -796,6 +802,170 @@ class MyDelegate(QStyledItemDelegate):
             selected_color = option.palette.highlight().color()
             painter.fillRect(option.rect,
                              QColor(selected_color.red(), selected_color.green(), selected_color.blue(), 50))
+
+
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtCore import QObject, pyqtSignal
+
+
+class InitializationWizard(QObject):
+    def __init__(self):
+        super().__init__()
+        self.widget = InitializationWizardWidget()
+        self.widget.save_signal.connect(self.save_json_data)
+        self.widget.load_signal.connect(self.load_json_data)
+        self.widget.load_signal.emit()
+        # self.widget.closeEvent.connect(self.load_signal.emit)  # Connect finished signal to save method
+
+    def save_json_data(self, data):
+        with open(r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\repositories\ImSwitch\labmaite_config.json", "w") as file:
+            json.dump(data, file, indent=4)
+
+    def load_json_data(self):
+        data = {}
+        try:
+            with open(r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\repositories\ImSwitch\labmaite_config.json",
+                      "r") as file:
+                data = json.load(file)
+                self.widget.load_default_values(data)
+        except FileNotFoundError:
+            pass
+        return data
+
+
+class InitializationWizardWidget(QDialog):
+    save_signal = pyqtSignal(dict)
+    load_signal = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Initialization Wizard")
+        self.initUI()
+
+    def initUI(self):
+        layout = QVBoxLayout()
+        # Define input fields for each JSON key
+        self.fields = {}
+        self.modules_checkboxes = []  # Initialize list to store module checkboxes
+        json_keys = [
+            "PROJECT_FOLDER", "MODULES", "DEBUG", "DEVICE",
+            "DEVICE_JSON_PATH", "APP", "EXPERIMENT_JSON_PATH"
+        ]
+        for key in json_keys:
+            if key == "MODULES":
+                label = QLabel(key + ":")
+                layout.addWidget(label)
+                modules_layout = QVBoxLayout()
+                self.modules = ["scan", "analysis", "fluidics"]
+                self.fields[key] = {}
+                for module in self.modules:
+                    checkbox = QCheckBox(module)
+                    modules_layout.addWidget(checkbox)
+                    checkbox.stateChanged.connect(partial(self.toggle_module, module))
+                    self.fields[key][module] = checkbox
+                layout.addLayout(modules_layout)
+            elif key == "DEBUG":
+                debug_layout = QVBoxLayout()
+                debug_label = QLabel("DEBUG:")
+                self.debug_checkbox = QCheckBox("Mocks")
+                self.debug_checkbox.stateChanged.connect(self.toggle_debug_label)
+                debug_layout.addWidget(debug_label)
+                debug_layout.addWidget(self.debug_checkbox)
+                layout.addLayout(debug_layout)
+                self.fields[key] = self.debug_checkbox.text()
+            elif key == "DEVICE":
+                device_layout = QVBoxLayout()
+                device_label = QLabel("DEVICE:")
+                self.device_checkbox = QCheckBox("UC2_INVESTIGATOR")
+                self.device_checkbox.stateChanged.connect(self.toggle_device_label)
+                device_layout.addWidget(device_label)
+                device_layout.addWidget(self.device_checkbox)
+                layout.addLayout(device_layout)
+                self.fields[key] = self.device_checkbox.text()
+            else:
+                label = QLabel(key + ":")
+                edit = QPushButton("Select")
+                edit.clicked.connect(lambda _, key=key: self.open_file_dialog(key))
+                layout.addWidget(label)
+                layout.addWidget(edit)
+                self.fields[key] = edit
+
+        # Load JSON data from file and populate input fields
+        self.setLayout(layout)
+
+    def closeEvent(self, event):
+        self.save_json_data()
+        event.accept()
+
+    def load_default_values(self, data):
+        for key, value in data.items():
+            if key == "MODULES":
+                for module in data[key]:
+                    if module:
+                        self.fields[key][module].setChecked(True)
+                    else:
+                        self.fields[key][module].setChecked(False)
+            elif key == "DEBUG":
+                if value == "2":
+                    self.debug_checkbox.setChecked(True)
+                    self.debug_checkbox.setText("Device")
+                else:
+                    self.debug_checkbox.setChecked(False)
+                    self.debug_checkbox.setText("Mocks")
+            elif key == "DEVICE":
+                if value == "UC2_INVESTIGATOR":
+                    self.device_checkbox.setChecked(True)
+                    self.device_checkbox.setText("UC2_INVESTIGATOR")
+                else:
+                    self.device_checkbox.setChecked(False)
+                    self.device_checkbox.setText("BTIG_A")
+            elif key in self.fields:
+                self.fields[key].setText(str(value))
+
+    def save_json_data(self):
+        data = {}
+        for key, edit in self.fields.items():
+            if key == "MODULES":
+                modules = [checkbox.text() for module, checkbox in self.fields[key].items() if checkbox.isChecked()]
+                data[key] = modules
+            elif key == "DEBUG":
+                if self.debug_checkbox.isChecked():
+                    data[key] = "2"
+                else:
+                    data[key] = "1"
+            elif key == "DEVICE":
+                if self.device_checkbox.isChecked():
+                    data[key] = "UC2_INVESTIGATOR"
+                else:
+                    data[key] = "BTIG_A"
+            else:
+                data[key] = edit.text()
+        self.save_signal.emit(data)
+
+    def open_file_dialog(self, key):
+        if key == "PROJECT_FOLDER":
+            directory = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+            if directory:
+                self.fields[key].setText(directory)
+        else:
+            file_path, _ = QFileDialog.getOpenFileName(self, f"Select {key.replace('_', ' ')}", "", "All Files (*)")
+            if file_path:
+                self.fields[key].setText(file_path)
+
+    def toggle_module(self, module, state):
+        self.fields["MODULES"][module].setChecked(state)
+
+    def toggle_debug_label(self, state):
+        if state == 2:  # checked
+            self.debug_checkbox.setText("Device")
+        else:
+            self.debug_checkbox.setText("Mocks")
+
+    def toggle_device_label(self, state):
+        if state:  # checked
+            self.device_checkbox.setText("UC2_INVESTIGATOR")
+        else:
+            self.device_checkbox.setText("BTIG_A")
 
 
 # From https://stackoverflow.com/questions/26227885/drag-and-drop-rows-within-qtablewidget
