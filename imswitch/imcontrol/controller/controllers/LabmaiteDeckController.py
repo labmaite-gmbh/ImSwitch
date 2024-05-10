@@ -29,8 +29,10 @@ _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
 # PROJECT FOLDER:
-# PROJECT_FOLDER = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\BMBF-LOCai\locai-impl"
-PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
+PROJECT_FOLDER = r"C:\Users\locai\Documents\LABMaiTE_repositories\locai-impl"
+if not os.path.exists(PROJECT_FOLDER):
+    raise NotADirectoryError(f"Project folder does not exist: {PROJECT_FOLDER}")
+# PROJECT_FOLDER = r"/home/worker5/Documents/repositories/locai-impl"
 # MODE:
 os.environ["DEBUG"] = "2"  # 1 for debug/Mocks, 2 for real device
 # MODULES:
@@ -44,18 +46,13 @@ if DEVICE == "BTIG_A":
         [PROJECT_FOLDER, 'config', 'updated_locai_experiment_config_TEST_multislot.json'])
 elif DEVICE == "UC2_INVESTIGATOR":
     # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, r"\config\uc2_device_config.json"])
-    # DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_device_config.json'])
     DEVICE_JSON_PATH = os.sep.join([PROJECT_FOLDER, 'config', 'uc2_sturdy_config.json'])
 # APPLICATION SPECIFIC FEATURES
 os.environ["APP"] = "BCALL"  # BCALL only for now
 if os.environ["APP"] == "BCALL":
-    exp_name = r"bcall_bcells_concentrations_medium_static.json" # r"bcall_K562_test.json"
-    exp_name = r"bcall_experiment_config_TEST.json" # r"bcall_K562_test.json"
-    exp_name = r"Test96WellPlate1.json"
-    exp_name = r"TestGrid1.json"
-    exp_name = (r"BCALLJurkatTestShort.json")
-
-
+    # exp_name = r"bcall_bcells_concentrations_medium_static.json"  # r"bcall_K562_test.json"
+    # exp_name = r"BCALL_JURKAT_RCH-ACV.json"
+    exp_name = r"BCALL_JURKAT_RCH-ACV__4h.json"
 
     EXPERIMENT_JSON_PATH = os.sep.join([PROJECT_FOLDER, "config", exp_name])
 
@@ -112,7 +109,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckController")
         start = time.time()
         self.exp_config = self.load_experiment_config_from_json(EXPERIMENT_JSON_PATH)
-        dev = self.init_device()
+        dev = self.init_device(home_on_start=True)
         self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                              callback_info=self.update_scan_info)
         self.exp_context.cfg_experiment_path = EXPERIMENT_JSON_PATH
@@ -129,7 +126,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.update_list_in_widget()
         self._widget.sigSliderValueChanged.connect(self.value_light_changed)
 
-    def init_device(self):
+    def init_device(self, home_on_start = False):
         if DEVICE == "UC2_INVESTIGATOR":
             from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
             cfg_device = CfgDevice.parse_file(DEVICE_JSON_PATH)
@@ -147,7 +144,21 @@ class LabmaiteDeckController(LiveUpdatedController):
         camera = CameraWrapper(imswitch_camera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
-        # device.stage.home() if DEVICE == "UC2_INVESTIGATOR" else ...
+        if DEVICE == "UC2_INVESTIGATOR" and home_on_start:
+            # TODO: understand weird z behaviour on start
+            p = device.stage.position()
+            print(f"Z={p.z} mm")
+            device.stage.positioner.z_axis.move_relative(0.1)
+            p = device.stage.position()
+            print(f"Z={p.z} mm")
+            device.stage.positioner.z_axis.move_relative(0)
+            # device.stage.move_absolute(Point(z=0))
+            p = device.stage.position()
+            print(f"Z={p.z} mm")
+            time.sleep(0.5)
+            device.stage.home()
+            p = device.stage.position()
+            print(f"p={p}")
         return device
 
     def update_scan_info(self, dict_info):
@@ -364,9 +375,12 @@ class LabmaiteDeckController(LiveUpdatedController):
                 row.position_in_well_index = len(count_dict[key]) - 1
         else:
             key = (self.scan_list[row].slot, self.scan_list[row].well)
-            while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well):
-                self.scan_list[row + 1].position_in_well_index += 1
-                row += 1
+            if len(self.scan_list) == 1:
+                self.scan_list[row].position_in_well_index += 1
+            else:
+                while key == (self.scan_list[row + 1].slot, self.scan_list[row + 1].well): # TODO: fix bug with single element list
+                    self.scan_list[row + 1].position_in_well_index += 1
+                    row += 1
 
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
@@ -839,8 +853,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        z_start = float(self._widget.well_base_widget.text())
-        z_end = float(self._widget.well_top_widget.text())
+        z_end = float(self._widget.well_base_widget.text())
+        z_start = float(self._widget.well_top_widget.text())
         z_step = float(self._widget.z_scan_step_widget.text())
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
