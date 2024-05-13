@@ -888,8 +888,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        z_start = float(self._widget.well_base_widget.text())
-        z_end = float(self._widget.well_top_widget.text())
+        z_end = float(self._widget.well_base_widget.text())
+        z_start = float(self._widget.well_top_widget.text())
         z_step = float(self._widget.z_scan_step_widget.text())
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)

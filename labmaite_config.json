@@ -1,4 +1,5 @@
 {
+    "EXPERIMENT_JSON_PATH": "C:/Users/matia_n97ktw5/Documents/LABMaiTE/repositories/locai-impl/config/experiment/BCALL_JURKAT_RCH-ACV__2h.json",
     "PROJECT_FOLDER": "C:\\Users\\matia_n97ktw5\\Documents\\LABMaiTE\\repositories\\locai-impl",
     "MODULES": [
         "scan"
@@ -6,6 +7,5 @@
     "DEBUG": "1",
     "DEVICE": "UC2_INVESTIGATOR",
     "DEVICE_JSON_PATH": "C:/Users/matia_n97ktw5/Documents/LABMaiTE/repositories/locai-impl/config/device/uc2_sturdy_config.json",
-    "APP": "BCALL",
-    "EXPERIMENT_JSON_PATH": "C:/Users/matia_n97ktw5/Documents/LABMaiTE/repositories/locai-impl/config/experiment/BCALL_JURKAT_RCH-ACV__2h.json"
+    "APP": "BCALL"
 }

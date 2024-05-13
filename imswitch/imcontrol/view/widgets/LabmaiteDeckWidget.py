@@ -2,7 +2,8 @@ import json
 from typing import Optional
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog
+from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog, QGridLayout, \
+    QComboBox, QFrame
 
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
@@ -843,51 +844,75 @@ class InitializationWizardWidget(QDialog):
         self.initUI()
 
     def initUI(self):
-        layout = QVBoxLayout()
+        layout = QGridLayout()
         # Define input fields for each JSON key
         self.fields = {}
         self.modules_checkboxes = []  # Initialize list to store module checkboxes
         json_keys = [
-            "PROJECT_FOLDER", "MODULES", "DEBUG", "DEVICE",
-            "DEVICE_JSON_PATH", "APP", "EXPERIMENT_JSON_PATH"
+            "EXPERIMENT_JSON_PATH", "PROJECT_FOLDER", "MODULES", "DEBUG", "DEVICE",
+            "DEVICE_JSON_PATH", "APP",
         ]
         for key in json_keys:
             if key == "MODULES":
                 label = QLabel(key + ":")
-                layout.addWidget(label)
-                modules_layout = QVBoxLayout()
+                modules_layout = QHBoxLayout()
                 self.modules = ["scan", "analysis", "fluidics"]
                 self.fields[key] = {}
+                modules_layout.addWidget(label)
                 for module in self.modules:
                     checkbox = QCheckBox(module)
                     modules_layout.addWidget(checkbox)
                     checkbox.stateChanged.connect(partial(self.toggle_module, module))
                     self.fields[key][module] = checkbox
-                layout.addLayout(modules_layout)
+                layout.addLayout(modules_layout, *(7, 0, 1, 1))
             elif key == "DEBUG":
-                debug_layout = QVBoxLayout()
+                debug_layout = QHBoxLayout()
                 debug_label = QLabel("DEBUG:")
                 self.debug_checkbox = QCheckBox("Mocks")
                 self.debug_checkbox.stateChanged.connect(self.toggle_debug_label)
                 debug_layout.addWidget(debug_label)
                 debug_layout.addWidget(self.debug_checkbox)
-                layout.addLayout(debug_layout)
+                layout.addLayout(debug_layout, *(6, 0, 1, 1))
                 self.fields[key] = self.debug_checkbox.text()
             elif key == "DEVICE":
-                device_layout = QVBoxLayout()
+                device_layout = QHBoxLayout()
                 device_label = QLabel("DEVICE:")
                 self.device_checkbox = QCheckBox("UC2_INVESTIGATOR")
                 self.device_checkbox.stateChanged.connect(self.toggle_device_label)
                 device_layout.addWidget(device_label)
                 device_layout.addWidget(self.device_checkbox)
-                layout.addLayout(device_layout)
+                layout.addLayout(device_layout, *(5, 0, 1, 1))
                 self.fields[key] = self.device_checkbox.text()
+            elif key == "APP":
+                app_layout = QHBoxLayout()
+                app_label = QLabel("APP:")
+                self.app_selector = QComboBox()
+                self.app_selector.addItems(["BCALL", "LOCAI", "ICARUS"])
+                self.app_selector.setDisabled(True)
+                # self.app_selector.stateChanged.connect(self.toggle_device_label)
+                app_layout.addWidget(app_label)
+                app_layout.addWidget(self.device_checkbox)
+                layout.addLayout(app_layout, *(4, 0, 1, 1))
+                self.fields[key] = self.app_selector.currentText()
             else:
+                if key == "EXPERIMENT_JSON_PATH":
+                    p0 = (0, 0, 1, 1)
+                elif key == "PROJECT_FOLDER":
+                    # Create a separator using QFrame
+                    separator = QFrame()
+                    separator.setFrameShape(QFrame.HLine)  # Horizontal line
+                    separator.setFrameShadow(QFrame.Sunken)  # Sunken effect
+                    layout.addWidget(separator)
+                    p0 = (2, 0, 1, 1)
+                elif key == "DEVICE_JSON_PATH":
+                    p0 = (3, 0, 1, 1)
+                layout_ = QVBoxLayout()
                 label = QLabel(key + ":")
                 edit = QPushButton("Select")
                 edit.clicked.connect(lambda _, key=key: self.open_file_dialog(key))
-                layout.addWidget(label)
-                layout.addWidget(edit)
+                layout_.addWidget(label)
+                layout_.addWidget(edit)
+                layout.addLayout(layout_, *p0)
                 self.fields[key] = edit
 
         # Load JSON data from file and populate input fields
@@ -919,6 +944,14 @@ class InitializationWizardWidget(QDialog):
                 else:
                     self.device_checkbox.setChecked(False)
                     self.device_checkbox.setText("BTIG_A")
+            elif key == "APP":
+                apps = [self.app_selector.itemText(i) for i in range(self.app_selector.count())]
+                if value not in apps:
+                    raise ValueError(
+                        f"APP {value} not in current applications: {[self.app_selector.itemText(i) for i in range(self.app_selector.count())]}.")
+                else:
+                    i = apps.index(value)
+                    self.app_selector.setCurrentIndex(i)
             elif key in self.fields:
                 self.fields[key].setText(str(value))
 
@@ -938,6 +971,8 @@ class InitializationWizardWidget(QDialog):
                     data[key] = "UC2_INVESTIGATOR"
                 else:
                     data[key] = "BTIG_A"
+            elif key == "APP":
+                data[key] = self.app_selector.currentText()
             else:
                 data[key] = edit.text()
         self.save_signal.emit(data)
