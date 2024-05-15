@@ -180,16 +180,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         print(f"init camera {time.time() - start:.3f} seconds")
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR" and home_on_start:
             # TODO: understand weird z behaviour on start
-            p = device.stage.position()
-            print(f"Z={p.z} mm")
-            device.stage.positioner.z_axis.move_relative(0.1)
-            p = device.stage.position()
-            print(f"Z={p.z} mm")
-            device.stage.positioner.z_axis.move_relative(0)
-            # device.stage.move_absolute(Point(z=0))
-            p = device.stage.position()
-            print(f"Z={p.z} mm")
-            time.sleep(0.5)
             device.stage.home()
             p = device.stage.position()
             print(f"p={p}")
@@ -363,6 +353,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def initialize_widget(self):
         self.initialize_positioners(options=(0, 0, 1, 5))
         self._widget.init_experiment_buttons((4, 4, 1, 1))
+        self._widget.init_offset_buttons((3, 4, 1, 1))
         self._widget.init_experiment_info((4, 0, 2, 3))
         row = self._widget.layout_positioner.rowCount()
         self._widget.init_home_button(row=row)
@@ -370,11 +361,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         # self._widget.init_light_source((3, 3, 1, 2))
         self._widget.init_well_action(row=row)
         self._widget.initialize_deck(self.exp_context.device.stage.deck_manager)
-        self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 2, 1))
+        self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 1, 1))
         self._widget.init_scan_list((7, 0, 2, 5))
         if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
-            self._widget.init_z_scan_widget(options=(3, 3, 1, 2))
-            self._widget.init_experiment_info((4, 0, 2, 2))
+            self._widget.init_z_scan_widget(options=(3, 3, 1, 1))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
             self._widget.z_scan_preview_button.clicked.connect(self.z_scan_preview)
             self._widget.scan_list.sigRowChecked.connect(self.checked_row)
@@ -591,7 +581,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         # Has control over positioner
         self.positioner_name = self._master.positionersManager.getAllDeviceNames()[0]
         # Set up positioners
-        symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
+        # symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
+        symbols = None
         for pName, pManager in self._master.positionersManager:
             if not pManager.forPositioning:
                 continue
