@@ -6,11 +6,9 @@ import threading
 import time
 from copy import deepcopy
 
-
 from qtpy import QtCore
 from functools import partial
 from typing import Union, List
-
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -28,10 +26,12 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
-from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
 
-wizard = InitializationWizard()
-wizard.widget.exec_()
+def launch_init_wizard():
+    from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
+
+    wizard = InitializationWizard()
+    wizard.widget.exec_()
 
 
 def load_configuration_file(file_path):
@@ -90,8 +90,8 @@ def load_configuration_file(file_path):
     return data
 
 
-file_path = r"C:\Users\matia_n97ktw5\Documents\LABMaiTE\repositories\ImSwitch\labmaite_config.json"
-data = load_configuration_file(file_path)
+# launch_init_wizard()
+data = load_configuration_file(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]))
 MODULES = data['MODULES']
 
 from hardware_api.core.abcs import Camera
@@ -157,6 +157,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_images = None
         self.initialize_widget()
         self.update_list_in_widget()
+        self._widget.sigScanInfoTextChanged.emit(f"Loaded {os.path.basename(os.environ['EXPERIMENT_JSON_PATH'])}")
         self._widget.sigSliderValueChanged.connect(self.value_light_changed)
 
     def init_device(self, home_on_start=False):
@@ -196,16 +197,15 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def update_scan_info(self, dict_info):
         formated_info = self.format_info(dict_info)
-        self._widget.sigScanInfoTextChanged.emit(formated_info)
+        self._widget.ScanInfo.setText(formated_info)
+        self._widget.ScanInfo.setHidden(False)
 
-    def format_info_scan(self, info):
+    def format_info_scan(self, info, date_format):
         if info.scan_info is not None:
             current_scan = info.scan_info.current_scan_number + 1
-            date_format = "%Y-%m-%d %H:%M:%S"
             text = f"SCAN {current_scan}/{self.exp_config.scan_params.number_scans} - {info.scan_info.status.value}\n"
-            if info.scan_info.status != ScanState.INITIALIZING:
-                start_time = info.scan_info.scan_start_time if info.scan_info.scan_start_time is not None else "-"
-                text = text + f"  Start:\t\t{start_time}\n" \
+            if info.scan_info.status not in [ScanState.INITIALIZING, ScanState.WAITING]:
+                text = text + f"  Start:\t\t{info.scan_info.scan_start_time.strftime(date_format)}\n" \
                               f"  Slot:\t\t{info.scan_info.current_slot}\n" \
                               f"  Well:\t\t{info.scan_info.current_well}\n" \
                               f"  Position:\t({info.pos_info.x:.2f}, {info.pos_info.y:.2f}, {info.pos_info.z:.3f})\n"
@@ -214,8 +214,8 @@ class LabmaiteDeckController(LiveUpdatedController):
                               f"  Slot:\t\t---\n" \
                               f"  Well:\t\t---\n" \
                               f"  Position:\t---\n"
-            if info.scan_info.status == ScanState.WAITING:
-                text = text + f"  Next:\t\t{'NotImplementedYet'}\n"
+            if info.scan_info.status == ScanState.COMPLETED:
+                text = text + f"  Next:\t\t{info.scan_info.next_scan_start_time}\n"
             else:
                 text = text + f"  Next:\t\t---\n"
         else:
@@ -234,39 +234,34 @@ class LabmaiteDeckController(LiveUpdatedController):
                           f"  Reservoir:\t{act.reservoir.reagent_id}@{act.reservoir.mux_channel}({act.reservoir.ob1_channel})\n"
         else:
             action_text = f"  Mux Channel:\t---\n" \
-                          f"  Flow Rate:\t0 μl/min\n" \
+                          f"  Flow Rate:\t---\n" \
                           f"  Duration:\t---\n" \
                           f"  Reservoir:\t---\n"
         if info.fluid_info.mux_in:
-            action_text = action_text + f"  Current Mux in:\t{info.fluid_info.mux_in}\n"
+            action_text = action_text + f"  Mux in:\t\t{info.fluid_info.mux_in}\n"
         else:
-            action_text = action_text + f"  Current Mux in:\t---\n"
+            action_text = action_text + f"  Mux in:\t---\n"
         if info.fluid_info.mux_out:
-            action_text = action_text + f"  Current Mux out:\t{info.fluid_info.mux_out}\n"
+            action_text = action_text + f"  Mux out:\t{info.fluid_info.mux_out}\n"
         else:
-            action_text = action_text + f"  Current Mux out:\t---\n"
+            action_text = action_text + f"  Mux out:\t---\n"
+        if info.fluid_info.pressure:
+            action_text = action_text + f"  Live pressure:\t{info.fluid_info.pressure:.2f} mBar\n"
+        else:
+            action_text = action_text + f"  Live pressure:\t---\n"
+        if info.fluid_info.flow_rate:
+            action_text = action_text + f"  Live flow:\t{info.fluid_info.flow_rate:.2f} μl/min\n"
+        else:
+            action_text = action_text + f"  Live flow:\t---\n"
         return fluid_text + action_text
 
     def format_info(self, info: ExperimentLiveInfo):
-        date_format = "%Y-%m-%d %H:%M:%S"
+        date_format = "%d/%m/%Y %H:%M:%S"
         general_info = f"STATUS: {info.experiment_status.value}\n" \
                        f"  Started at:\t{info.start_time.strftime(date_format)}\n" \
                        f"  Estimated left:\t{info.estimated_remaining_time}\n"
-        scan_text = self.format_info_scan(info)
+        scan_text = self.format_info_scan(info, date_format)
         fluid_info = self.format_fluid_info(info)
-        # # f" Index: {info.scan_info.current_pos_index}" \
-        # fluidics_info = f"FLUIDICS: {info.fluid_info.status.value}\n" \
-        #                 f"\tAction {info.fluid_info.current_action_number}:\n"
-        # action = info.fluid_info.current_action
-        # if action is not None:
-        #     action_info = f"\tMux Channel: {action.mux_group_channel}({action.ob1_channel}) (Slot: {action.slot_number})\n" \
-        #                   f"\tFlow rate: {action.flow_rate} ul/min, Duration: {action.duration_seconds} seconds\n"
-        #     reservoir_info = f"\tReservoir: {action.reservoir.reagent_id}@{action.reservoir.mux_channel}({action.reservoir.ob1_channel})\n"
-        # else:
-        #     action_info = ""
-        #     reservoir_info = ""
-        # # event_info = f"EVENT: {info.event}\n"
-        # return scan_info + fluidics_info + action_info + reservoir_info
         return general_info + scan_text + fluid_info
 
     def value_light_changed(self, light_source, value):
@@ -324,11 +319,17 @@ class LabmaiteDeckController(LiveUpdatedController):
         try:
             with open(path, "w") as file:
                 file.write(self.exp_config.json(indent=4))
-            self._widget.sigScanInfoTextChanged.emit(f"Saved changes to {os.path.split(path)[1]}")
+            self._widget.ScanInfo.setText(f"Saved changes to {os.path.split(path)[1]}")
+            self._widget.ScanInfo.setHidden(False)
             self.__logger.debug(f"Saved file to {path}")
             self.__logger.debug(f"Experiment Config: {self.exp_config}")
         except Exception as e:
             self.__logger.debug(f"No file selected. {e}")
+
+    def new_experiment_config(self):
+        self._widget.sigScanInfoTextChanged.emit(f"This feature is not implemented yet. "
+                                                 f"Please use the experiment configuration wizard. "
+                                                 f"You can find it in the Desktop as a shortcut.")
 
     def open_experiment_config(self):
         path = self._widget.display_open_file_window()
@@ -363,21 +364,19 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.initialize_positioners(options=(0, 0, 1, 5))
         self._widget.init_experiment_buttons((4, 4, 1, 1))
         self._widget.init_experiment_info((4, 0, 2, 3))
-        self._widget.init_home_button((1, 4, 1, 1))
-        self._widget.init_park_button((1, 3, 1, 1))
+        row = self._widget.layout_positioner.rowCount()
+        self._widget.init_home_button(row=row)
+        self._widget.init_park_button(row=row)
         # self._widget.init_light_source((3, 3, 1, 2))
-        self._widget.init_well_action((2, 3, 1, 1))
-        self._widget.initialize_deck(self.exp_context.device.stage.deck_manager, [(1, 0, 3, 3), (2, 4, 1, 1)])
+        self._widget.init_well_action(row=row)
+        self._widget.initialize_deck(self.exp_context.device.stage.deck_manager)
         self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 2, 1))
         self._widget.init_scan_list((7, 0, 2, 5))
         if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
-            self._widget.init_z_scan_widget((3, 3, 1, 2))
+            self._widget.init_z_scan_widget(options=(3, 3, 1, 2))
             self._widget.init_experiment_info((4, 0, 2, 2))
-            self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params,
-                                                   options=(4, 2, 2, 1))
+            self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
             self._widget.z_scan_preview_button.clicked.connect(self.z_scan_preview)
-            # self._widget.z_stack_checkbox_widget.clicked.connect(self.z_scan_preview) # TODO: change
-            # TODO: connect change in enabled Z-stack widget
             self._widget.scan_list.sigRowChecked.connect(self.checked_row)
             try:
                 self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
@@ -445,6 +444,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.update_beacons_index()
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
+        self._widget.ScanInfo.setHidden(False)
 
     def duplicate_position_in_list(self, row):
         selected_scan_point = deepcopy(self.scan_list[row])
@@ -845,8 +845,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.connect_deck_slots()
         self._widget.ScanStartButton.clicked.connect(self.start_scan)
         self._widget.ScanStopButton.clicked.connect(self.stop_scan)
-        self._widget.ScanSaveButton.clicked.connect(self.save_experiment_config)
-        self._widget.ScanOpenButton.clicked.connect(self.open_experiment_config)
+        self._widget.sigScanSave.connect(self.save_experiment_config)
+        self._widget.sigScanOpen.connect(self.open_experiment_config)
+        self._widget.sigScanNew.connect(self.new_experiment_config)
+
         self._widget.adjust_offset_button.clicked.connect(self.adjust_all_offsets)
         self._widget.home_button.clicked.connect(self.home)
         self._widget.park_button.clicked.connect(self.park)
@@ -888,9 +890,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
 
     def z_scan_preview(self):
-        z_end = float(self._widget.well_base_widget.text())
-        z_start = float(self._widget.well_top_widget.text())
-        z_step = float(self._widget.z_scan_step_widget.text())
+        z_end, z_start, z_step = self._widget.get_zscan_values()
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
         imager = get_preview_imager(exp.scan_params.illumination_params)
@@ -914,55 +914,48 @@ class LabmaiteDeckController(LiveUpdatedController):
             del self.exp_context.thread_experiment
         thread_experiment = threading.Thread(target=self.exp_context.run_experiment)
         thread_experiment.start()
-        # TODO: improve check
         self._widget.ScanStartButton.setEnabled(False)
-        self._widget.ScanSaveButton.setEnabled(False)
         self._widget.ScanStopButton.setEnabled(True)
-        self._widget.ScanSaveButton.setEnabled(False)
-        self._widget.adjust_all_focus_button.setEnabled(False)
-        self._widget.adjust_offset_button.setEnabled(False)
         self.hide_widgets()
 
     def hide_widgets(self):
         self._widget._positioner_widget.hide()
         self._widget._wells_group_box.hide()
-        self._widget._deck_group_box.hide()
         self._widget.LEDWidget.hide()
-        self._widget.home_button_widget.hide()
+        self._widget.home_button.hide()
+        self._widget.park_button.hide()
+        self._widget.goto_btn.hide()
         self._widget.well_action_widget.hide()
         self._widget.scan_list.context_menu_enabled = False
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.hide()
-            self._widget.z_stack_config_widget.hide()
+            self._widget.adjust_all_focus_button.hide()
             self._widget.OffsetsWidgets.hide()
 
     def stop_scan(self):
         # if hasattr(self.exp_context, "shared_context"):
         if self.exp_context.state in [ExperimentState.RUNNING]:
             self.exp_context.stop_experiment()
+            self.show_widgets()
         else:
             print(f"No running experiment to stop.")
 
     def experiment_finished(self):
         self._widget.ScanStartButton.setEnabled(True)
-        self._widget.ScanSaveButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
-        self._widget.ScanSaveButton.setEnabled(True)
-        self._widget.adjust_all_focus_button.setEnabled(True)
-        self._widget.adjust_offset_button.setEnabled(True)
         self.show_widgets()
 
     def show_widgets(self):
         self._widget._positioner_widget.show()
         self._widget._wells_group_box.show()
-        self._widget._deck_group_box.show()
         self._widget.LEDWidget.show()
-        self._widget.home_button_widget.show()
+        self._widget.home_button.show()
+        self._widget.park_button.show()
         self._widget.well_action_widget.show()
         self._widget.scan_list.context_menu_enabled = True
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.show()
-            self._widget.z_stack_config_widget.show()
+            self._widget.adjust_all_focus_button.show()
             self._widget.OffsetsWidgets.show()
 
     def save_experiment_config(self):
@@ -971,13 +964,13 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.save_scan_list_to_json()
 
     def adjust_all_offsets(self):
-        x, y = self._widget.get_offset_all()
-        self._adjust_all_offsets(x, y)
+        x, y, z = self._widget.get_offset_all()
+        self._adjust_all_offsets(x, y, z)
         self.update_list_in_widget()
-        self.__logger.debug(f"Adjusting Offsets: X_offset = {x} mm, Y_offset = {y} mm")
+        self.__logger.debug(f"Adjusting Offsets: X_offset = {x} mm, Y_offset = {y} mm, Z_offset = {z} mm")
         self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
-    def _adjust_all_offsets(self, x: float = 0, y: float = 0):
+    def _adjust_all_offsets(self, x: float = 0, y: float = 0, z: float = 0):
         for row in range(len(self.scan_list)):
             self.scan_list[row].offset_from_center_x += x
             self.scan_list[row].offset_from_center_y += y
@@ -985,9 +978,11 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].point.y += y
             self.scan_list[row].position_x += x
             self.scan_list[row].position_y += y
+            self.scan_list[row].position_z += z
+            self.scan_list[row].point.z += z  # TODO: this one modifies the exp_config as intended.
 
     def save_zstack_params(self):
-        z_height, z_sep, z_slices, _ = self._widget.get_z_stack_values_in_um()
+        z_height, z_sep, z_slices = self._widget.get_z_stack_values_in_um()
         self.exp_config.scan_params.z_stack_params.z_sep = z_sep / 1000
         self.exp_config.scan_params.z_stack_params.z_slices = z_slices
         self.exp_config.scan_params.z_stack_params.z_height = z_height / 1000
@@ -995,7 +990,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
         # Connect signals for all buttons
-        self._widget.slots_combobox.currentTextChanged.connect(self.select_labware)
+        # self._widget.slots_combobox.currentTextChanged.connect(self.select_labware)
         positioner = self.exp_context.device.stage
         self.select_labware(list(positioner.deck_manager.labwares.keys())[0])  # TODO: improve...
 
