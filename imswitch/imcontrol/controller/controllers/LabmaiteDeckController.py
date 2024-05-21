@@ -40,7 +40,7 @@ def load_configuration_file(file_path):
 
     # Set environment variables
     if not os.path.exists(data['PROJECT_FOLDER']):
-        raise NotADirectoryError(f"Project folder does not exist: {os.environ['']}")
+        raise NotADirectoryError(f"Project folder does not exist: {data['PROJECT_FOLDER']}")
     else:
         os.environ["PROJECT_FOLDER"] = data['PROJECT_FOLDER']
 
@@ -156,9 +156,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_z_pos = None
         self.preview_images = None
         self.initialize_widget()
+        self.connect_signals()
+        self.connect_widget_buttons()
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit(f"Loaded {os.path.basename(os.environ['EXPERIMENT_JSON_PATH'])}")
-        self._widget.sigSliderValueChanged.connect(self.value_light_changed)
+        self._connect(self._widget.sigSliderValueChanged, self.value_light_changed)
 
     def init_device(self, home_on_start=False):
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR":
@@ -337,9 +339,13 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.relative_focal_plane = None
             self.preview_z_pos = None
             self.preview_images = None
+            self._widget.current_slot = None  # TODO: quick fix, improve!
             self.initialize_widget()
+            # # Connect widget´s buttons
+            self.connect_signals()
+            self.connect_widget_buttons()
             self.update_list_in_widget()
-            self._widget.sigSliderValueChanged.connect(self.value_light_changed)
+            self._connect(self._widget.sigSliderValueChanged, self.value_light_changed)
             self._widget.sigScanInfoTextChanged.emit(f"Opened {os.path.split(path)[1]}")
             self.__logger.debug(f"Experiment Config: {self.exp_config}")
         except Exception as e:
@@ -353,12 +359,10 @@ class LabmaiteDeckController(LiveUpdatedController):
     def initialize_widget(self):
         self.initialize_positioners(options=(0, 0, 1, 5))
         self._widget.init_experiment_buttons((4, 4, 1, 1))
-        self._widget.init_offset_buttons((3, 4, 1, 1))
         self._widget.init_experiment_info((4, 0, 2, 3))
         row = self._widget.layout_positioner.rowCount()
         self._widget.init_home_button(row=row)
         self._widget.init_park_button(row=row)
-        # self._widget.init_light_source((3, 3, 1, 2))
         self._widget.init_well_action(row=row)
         self._widget.initialize_deck(self.exp_context.device.stage.deck_manager)
         self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 1, 1))
@@ -366,8 +370,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
             self._widget.init_z_scan_widget(options=(3, 3, 1, 1))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
-            self._widget.z_scan_preview_button.clicked.connect(self.z_scan_preview)
-            self._widget.scan_list.sigRowChecked.connect(self.checked_row)
+            self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
+            self._connect(self._widget.scan_list.sigRowChecked, self.checked_row)
             try:
                 self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
                 self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Labware"), True)
@@ -376,9 +380,6 @@ class LabmaiteDeckController(LiveUpdatedController):
                 self.__logger.warning(f"Error when initializing LabmaiteDeckWidget's Scan List. Exception: {e} ")
         else:
             pass
-        # Connect widget´s buttons
-        self.connect_signals()
-        self.connect_widget_buttons()
 
     def checked_row(self, state, row):
         self.scan_list[row].checked = state
@@ -579,6 +580,8 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def initialize_positioners(self, options=(0, 0, 1, 1)):
         # Has control over positioner
+        if hasattr(self._widget, '_positioner_widget'):
+            del self._widget._positioner_widget
         self.positioner_name = self._master.positionersManager.getAllDeviceNames()[0]
         # Set up positioners
         # symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
@@ -603,12 +606,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._commChannel.sharedAttrs.sigAttributeSet.connect(self.attrChanged)
         self._commChannel.sigSetSpeed.connect(lambda speed: self.setSpeedGUI(speed))
         # Connect PositionerWidget signals
-        self._widget.sigStepUpClicked.connect(self.stepUp)
-        self._widget.sigStepDownClicked.connect(self.stepDown)
-        self._widget.sigsetSpeedClicked.connect(self.setSpeedGUI)
-        self._widget.sigStepAbsoluteClicked.connect(self.moveAbsolute)
-        self._widget.sigHomeAxisClicked.connect(self.home_axis)
-        self._widget.sigStopAxisClicked.connect(self.stop_axis)
+        self._connect(self._widget.sigStepUpClicked, self.stepUp)
+        self._connect(self._widget.sigStepDownClicked, self.stepDown)
+        self._connect(self._widget.sigsetSpeedClicked, self.setSpeedGUI)
+        self._connect(self._widget.sigStepAbsoluteClicked, self.moveAbsolute)
+        self._connect(self._widget.sigHomeAxisClicked, self.home_axis)
+        self._connect(self._widget.sigStopAxisClicked, self.stop_axis)
 
     def stop_axis(self, positionerName, axis):
         self.__logger.debug(f"Stopping axis {axis}")
@@ -824,26 +827,25 @@ class LabmaiteDeckController(LiveUpdatedController):
         threading.Thread(target=move_from_well_update, daemon=True).start()
 
     def connect_signals(self):
-        self.sigZScanStart.connect(self.set_images)
-        self._widget.sigTableSelect.connect(self.selected_row)
-        self._widget.scan_list.sigGoToTableClicked.connect(self.go_to_position_in_list)
-        self._widget.scan_list.sigDeleteRowClicked.connect(self.delete_position_in_list)
-        self._widget.scan_list.sigAdjustFocusClicked.connect(self.adjust_focus_in_list)
-        self._widget.scan_list.sigAdjustPositionClicked.connect(self.adjust_position_in_list)
-        self._widget.scan_list.sigDuplicatePositionClicked.connect(self.duplicate_position_in_list)
+        self._connect(self.sigZScanStart, self.set_images)
+        self._connect(self._widget.sigTableSelect, self.selected_row)
+        self._connect(self._widget.scan_list.sigGoToTableClicked, self.go_to_position_in_list)
+        self._connect(self._widget.scan_list.sigDeleteRowClicked, self.delete_position_in_list)
+        self._connect(self._widget.scan_list.sigAdjustFocusClicked, self.adjust_focus_in_list)
+        self._connect(self._widget.scan_list.sigAdjustPositionClicked, self.adjust_position_in_list)
+        self._connect(self._widget.scan_list.sigDuplicatePositionClicked, self.duplicate_position_in_list)
+        self._connect(self._widget.sigScanSave, self.save_experiment_config)
+        self._connect(self._widget.sigScanOpen, self.open_experiment_config)
+        self._connect(self._widget.sigScanNew, self.new_experiment_config)
+        self._connect(self._widget.sigOffsetsSet, self.adjust_all_offsets)
 
     def connect_widget_buttons(self):
         self.connect_deck_slots()
-        self._widget.ScanStartButton.clicked.connect(self.start_scan)
-        self._widget.ScanStopButton.clicked.connect(self.stop_scan)
-        self._widget.sigScanSave.connect(self.save_experiment_config)
-        self._widget.sigScanOpen.connect(self.open_experiment_config)
-        self._widget.sigScanNew.connect(self.new_experiment_config)
-
-        self._widget.adjust_offset_button.clicked.connect(self.adjust_all_offsets)
-        self._widget.home_button.clicked.connect(self.home)
-        self._widget.park_button.clicked.connect(self.park)
-        self._widget.adjust_all_focus_button.clicked.connect(self.adjust_all_focus)
+        self._connect(self._widget.ScanStartButton.clicked, self.start_scan)
+        self._connect(self._widget.ScanStopButton.clicked, self.stop_scan)
+        self._connect(self._widget.home_button.clicked, self.home)
+        self._connect(self._widget.park_button.clicked, self.park)
+        self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
 
@@ -854,9 +856,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         # TODO: hardcoded pixelsize
         name = f"Preview {self.selected_well}"
         self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
-        self._widget.viewer.dims.events.current_step.connect(
-            partial(self._widget.update_slider, self.preview_z_pos, name))
-        self._widget.sigZScanValue.connect(self.set_z_slice_value)
+        self._connect(self._widget.viewer.dims.events.current_step,
+                      partial(self._widget.update_slider, self.preview_z_pos, name))
+        self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
+
 
     def set_z_slice_value(self, value):
         try:
@@ -873,12 +876,15 @@ class LabmaiteDeckController(LiveUpdatedController):
     def selected_row(self, row):
         self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")
         if isinstance(self._widget.z_scan_adjust_focus_widget, guitools.BetterPushButton):
-            try:
-                self._widget.z_scan_adjust_focus_widget.clicked.disconnect()
-            except Exception:
-                pass
-            self._widget.z_scan_adjust_focus_widget.clicked.connect(partial(self.adjust_focus_from_preview, row))
+            self._connect(self._widget.z_scan_adjust_focus_widget.clicked, partial(self.adjust_focus_from_preview, row))
             print(f"Selected row: {row}. \n {self.scan_list[row]}")
+
+    def _connect(self, element, method):
+        try:
+            element.disconnect()
+        except Exception as e:
+            self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+        element.connect(method)
 
     def z_scan_preview(self):
         z_end, z_start, z_step = self._widget.get_zscan_values()
@@ -909,20 +915,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(True)
         self.hide_widgets()
 
-    def hide_widgets(self):
-        self._widget._positioner_widget.hide()
-        self._widget._wells_group_box.hide()
-        self._widget.LEDWidget.hide()
-        self._widget.home_button.hide()
-        self._widget.park_button.hide()
-        self._widget.goto_btn.hide()
-        self._widget.well_action_widget.hide()
-        self._widget.scan_list.context_menu_enabled = False
-        if os.environ["APP"] == ("BCALL" or "ICARUS"):
-            self._widget._z_scan_box.hide()
-            self._widget.adjust_all_focus_button.hide()
-            self._widget.OffsetsWidgets.hide()
-
     def stop_scan(self):
         # if hasattr(self.exp_context, "shared_context"):
         if self.exp_context.state in [ExperimentState.RUNNING]:
@@ -936,26 +928,33 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.ScanStopButton.setEnabled(False)
         self.show_widgets()
 
-    def show_widgets(self):
-        self._widget._positioner_widget.show()
-        self._widget._wells_group_box.show()
-        self._widget.LEDWidget.show()
-        self._widget.home_button.show()
-        self._widget.park_button.show()
-        self._widget.well_action_widget.show()
-        self._widget.scan_list.context_menu_enabled = True
+    def hide_widgets(self):
+        self.toggle_widgets(show=False)
+
+    def toggle_widgets(self, show=True):
+        self._widget._positioner_widget.show() if show else self._widget._positioner_widget.hide()
+        self._widget._wells_group_box.show() if show else self._widget._wells_group_box.hide()
+        self._widget.LEDWidget.show() if show else self._widget.LEDWidget.hide()
+        self._widget.home_button.show() if show else self._widget.home_button.hide()
+        self._widget.park_button.show() if show else self._widget.park_button.hide()
+        self._widget.goto_btn.show() if show else self._widget.goto_btn.hide()
+        self._widget.well_action_widget.show() if show else self._widget.well_action_widget.hide()
+        self._widget.scan_list.context_menu_enabled = show
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
-            self._widget._z_scan_box.show()
-            self._widget.adjust_all_focus_button.show()
-            self._widget.OffsetsWidgets.show()
+            self._widget._z_scan_box.show() if show else self._widget._z_scan_box.hide()
+            self._widget.adjust_all_focus_button.show() if show else self._widget.adjust_all_focus_button.hide()
+            # self._widget.OffsetsWidgets.show() if show else self._widget.OffsetsWidgets.hide()
+
+    def show_widgets(self):
+        self.toggle_widgets(show=True)
 
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
         self.save_scan_list_to_json()
 
-    def adjust_all_offsets(self):
-        x, y, z = self._widget.get_offset_all()
+    def adjust_all_offsets(self, x, y, z):
+        # x, y, z = self._widget.get_offset_all()
         self._adjust_all_offsets(x, y, z)
         self.update_list_in_widget()
         self.__logger.debug(f"Adjusting Offsets: X_offset = {x} mm, Y_offset = {y} mm, Z_offset = {z} mm")
@@ -991,7 +990,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         def on_go_to_clicked():
             self.move_to_well(self.selected_well, self.selected_slot)
 
-        self._widget.goto_btn.clicked.connect(on_go_to_clicked)
+        self._connect(self._widget.goto_btn.clicked, on_go_to_clicked)
 
     def connect_wells(self):
         """Connect Wells (Buttons) to the Sample Pop-Up Method"""
@@ -999,7 +998,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         for well, btn in self._widget.wells.items():
             # Connect signals
             if isinstance(btn, guitools.BetterPushButton):
-                btn.clicked.connect(partial(self.select_well, well))
+                self._connect(btn.clicked, partial(self.select_well, well))
+                # self._disconnect_element(btn.clicked)
+                # btn.clicked.connect(partial(self.select_well, well))
 
     def select_well(self, well: str = None):
         self.__logger.debug(f"Well {well} in slot {self.selected_slot}")

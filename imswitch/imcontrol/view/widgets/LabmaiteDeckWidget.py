@@ -1,4 +1,5 @@
 import json
+import os
 from typing import Optional
 
 from PyQt5.QtCore import Qt
@@ -48,6 +49,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigWellSelect = QtCore.Signal(str)
 
     sigZPositionUpdate = QtCore.Signal(str)
+    sigOffsetsSet = QtCore.Signal(float, float, float)
 
     sigSlicesChanged = QtCore.Signal(int)
     sigSeparationChanged = QtCore.Signal(float)
@@ -70,6 +72,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.getSignal = getSignal
         self.init_menu_bar()
         self.__logger = initLogger(self, instanceName="DeckWidget")
+
+    @property
+    def current_slot(self):
+        return self._current_slot
+
+    @current_slot.setter
+    def current_slot(self, slot):
+        self._current_slot = slot
 
     def init_menu_bar(self):
         # Create a menu bar
@@ -107,6 +117,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         zscan_dialog_action = QAction("Z-Scan", self)
         zscan_dialog_action.triggered.connect(self.open_zscan_dialog)
         file_menu.addAction(zscan_dialog_action)
+
+        offsets_dialog_action = QAction("Offsets", self)
+        offsets_dialog_action.triggered.connect(self.open_offsets_dialog)
+        file_menu.addAction(offsets_dialog_action)
 
         file_menu.addSeparator()  # Add a separator
         illumination_dialog_action = QAction("Illumination", self)
@@ -180,6 +194,47 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
         zstack_dialog.setLayout(layout)
         zstack_dialog.exec()
+
+    def open_offsets_dialog(self):
+        offsets_dialog = QDialog()
+        layout = QtWidgets.QGridLayout()
+        self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets:")
+        self.OffsetsWidgets.setFixedWidth(130)
+        offset_buttons_layout = QtWidgets.QGridLayout()
+
+        self.x_offset_all_value = QtWidgets.QLineEdit()
+        self.x_offset_all_value.setText(f"{0:.2f}")
+        self.x_offset_all_value.setEnabled(True)
+
+        self.y_offset_all_value = QtWidgets.QLineEdit()
+        self.y_offset_all_value.setText(f"{0:.2f}")
+        self.y_offset_all_value.setEnabled(True)
+
+        self.z_offset_all_value = QtWidgets.QLineEdit()
+        self.z_offset_all_value.setText(f"{0:.2f}")
+        self.z_offset_all_value.setEnabled(True)
+
+        self.adjust_offset_button = guitools.BetterPushButton('Set!')
+        self.adjust_offset_button.setStyleSheet("font-size: 14px")
+        self.adjust_offset_button.setMinimumWidth(90)
+
+        self.adjust_offset_button.clicked.connect(self.emit_offsets)
+
+        offset_buttons_layout.addWidget(QLabel("X"), *(0, 0, 1, 1))
+        offset_buttons_layout.addWidget(self.x_offset_all_value, *(0, 1, 1, 1))
+        offset_buttons_layout.addWidget(QLabel("Y"), *(1, 0, 1, 1))
+        offset_buttons_layout.addWidget(self.y_offset_all_value, *(1, 1, 1, 1))
+        offset_buttons_layout.addWidget(QLabel("Z"), *(2, 0, 1, 1))
+        offset_buttons_layout.addWidget(self.z_offset_all_value, *(2, 1, 1, 1))
+        offset_buttons_layout.addWidget(self.adjust_offset_button, *(3, 0, 1, 2))
+
+        self.OffsetsWidgets.setLayout(offset_buttons_layout)
+        offsets_dialog.setLayout(offset_buttons_layout)
+        offsets_dialog.exec()
+
+    def emit_offsets(self):
+        x, y, z = self.get_offset_all()
+        self.sigOffsetsSet.emit(x, y, z)
 
     def open_zscan_dialog(self):
         zscan_dialog = QDialog()
@@ -430,6 +485,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def init_zstack_config_widget(self, default_values_in_mm: ZStackParameters):
         # z-stack
+        self.z_stack_checkbox_widget = QCheckBox('Depth/Separation [um]')
         self.z_height = default_values_in_mm.z_height * 1000
         self.z_sep = default_values_in_mm.z_sep * 1000
         self.z_slices = default_values_in_mm.z_slices
@@ -493,7 +549,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
         self._z_scan_box.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self._z_scan_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                         QtWidgets.QSizePolicy.Expanding)
+                                       QtWidgets.QSizePolicy.Expanding)
         # layout.addWidget(self.z_scan_stop_button)
         self._z_scan_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._z_scan_box, *options)
@@ -532,7 +588,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.LEDWidget.setMaximumWidth(150)
         self.LEDWidget.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.LEDWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                       QtWidgets.QSizePolicy.Expanding)
+                                     QtWidgets.QSizePolicy.Expanding)
         led_layout = QtWidgets.QGridLayout()
 
         self.light_sources_widgets = {}
@@ -615,10 +671,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.adjust_all_focus_button.setFixedHeight(30)
         self.adjust_all_focus_button.setMinimumWidth(40)
 
-        self.adjust_offset_button = guitools.BetterPushButton('Set!')
-        self.adjust_offset_button.setStyleSheet("font-size: 14px")
-        self.adjust_offset_button.setMinimumWidth(90)
-
         exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
         exp_buttons_layout.addWidget(self.ScanStopButton, 0, 1, 1, 1)
         exp_buttons_layout.addWidget(self.adjust_all_focus_button, 1, 0, 1, 2)
@@ -629,32 +681,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.main_grid_layout.addWidget(self.ScanActionsWidget, *options)
 
     def init_offset_buttons(self, options=(3, 4, 1, 1)):
-        self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets:")
-        self.OffsetsWidgets.setFixedWidth(130)
-        offset_buttons_layout = QtWidgets.QGridLayout()
-
-        self.x_offset_all_value = QtWidgets.QLineEdit()
-        self.x_offset_all_value.setText(f"{0:.2f}")
-        self.x_offset_all_value.setEnabled(True)
-
-        self.y_offset_all_value = QtWidgets.QLineEdit()
-        self.y_offset_all_value.setText(f"{0:.2f}")
-        self.y_offset_all_value.setEnabled(True)
-
-        self.z_offset_all_value = QtWidgets.QLineEdit()
-        self.z_offset_all_value.setText(f"{0:.2f}")
-        self.z_offset_all_value.setEnabled(True)
-
-        offset_buttons_layout.addWidget(QLabel("X"), *(0, 0, 1, 1))
-        offset_buttons_layout.addWidget(self.x_offset_all_value, *(0, 1, 1, 1))
-        offset_buttons_layout.addWidget(QLabel("Y"), *(1, 0, 1, 1))
-        offset_buttons_layout.addWidget(self.y_offset_all_value, *(1, 1, 1, 1))
-        offset_buttons_layout.addWidget(QLabel("Z"), *(2, 0, 1, 1))
-        offset_buttons_layout.addWidget(self.z_offset_all_value, *(2, 1, 1, 1))
-        offset_buttons_layout.addWidget(self.adjust_offset_button, *(3, 0, 1, 2))
-
-        self.OffsetsWidgets.setLayout(offset_buttons_layout)
-        self.main_grid_layout.addWidget(self.OffsetsWidgets, *options)
+        self.adjust_offset_button = guitools.BetterPushButton('Set!')
 
     def get_offset_all(self):
         return float(self.x_offset_all_value.text()), float(self.y_offset_all_value.text()), float(
@@ -673,9 +700,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         ScanInfo_layout = QtWidgets.QHBoxLayout()
         ScanInfo_layout.addWidget(self.ScanInfo)
         self.ScanInfo.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                           QtWidgets.QSizePolicy.Expanding)
+                                    QtWidgets.QSizePolicy.Expanding)
         self.ScanInfo_widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                       QtWidgets.QSizePolicy.Expanding)
+                                           QtWidgets.QSizePolicy.Expanding)
         self.ScanInfo_widget.setLayout(ScanInfo_layout)
         self.main_grid_layout.addWidget(self.ScanInfo_widget, *options)
         self.setLayout(self.main_grid_layout)
@@ -921,13 +948,13 @@ class InitializationWizard(QObject):
         # self.widget.closeEvent.connect(self.load_signal.emit)  # Connect finished signal to save method
 
     def save_json_data(self, data):
-        with open(r"C:\Users\locai\Documents\LABMaiTE_repositories\ImSwitch\labmaite_config.json", "w") as file:
+        with open(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]), "w") as file:
             json.dump(data, file, indent=4)
 
     def load_json_data(self):
         data = {}
         try:
-            with open(r"C:\Users\locai\Documents\LABMaiTE_repositories\ImSwitch\labmaite_config.json", "r") as file:
+            with open(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]), "r") as file:
                 data = json.load(file)
                 self.widget.load_default_values(data)
         except FileNotFoundError:
@@ -976,7 +1003,7 @@ class InitializationWizardWidget(QDialog):
     def developer_tab(self):
         dev_tab = QWidget()
         layout = QVBoxLayout()
-        json_keys = ["PROJECT_FOLDER", "DEVICE", "DEVICE_JSON_PATH", "MODULES", "DEBUG", "APP"]
+        json_keys = ["PROJECT_FOLDER", "DEVICE", "DEVICE_JSON_PATH", "MODULES", "DEBUG", "APP", "STORAGE_PATH"]
         for key in json_keys:
             if key == "MODULES":
                 label = QLabel(key + ":")
