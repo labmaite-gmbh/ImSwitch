@@ -25,8 +25,8 @@ def prepareApp():
     os.environ['HDF5_USE_FILE_LOCKING'] = 'FALSE'  # Force HDF5 to not lock files
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
     QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)  # Fixes Napari issues
-    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_DisableHighDpiScaling, True) # proper scaling on Mac?
-    #QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_DisableHighDpiScaling, True)  # proper scaling on Mac?
+    # QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
     app = QtWidgets.QApplication([])
     app.setWindowIcon(QtGui.QIcon(os.path.join(dirtools.DataFileDirs.Root, 'icon.png')))
     app.setStyleSheet(getBaseStyleSheet())
@@ -38,6 +38,20 @@ def launchApp(app, mainView, moduleMainControllers):
 
     logger = initLogger('launchApp')
 
+    # Define the custom close event
+    def customCloseEvent(event):
+        reply = QtWidgets.QMessageBox.question(mainView, 'Confirmation',
+                                               'Are you sure you want to quit?',
+                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                                               QtWidgets.QMessageBox.No
+                                               )
+        if reply == QtWidgets.QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
+
+    # Assign the custom close event to the mainView
+    mainView.closeEvent = customCloseEvent
     # Show app
     if mainView is not None:
         mainView.showMaximized()
@@ -54,7 +68,6 @@ def launchApp(app, mainView, moduleMainControllers):
 
     # Exit
     sys.exit(exitCode)
-
 
 # Copyright (C) 2020-2021 ImSwitch developers
 # This file is part of ImSwitch.

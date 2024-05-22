@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from typing import Optional
 
 from PyQt5.QtCore import Qt
@@ -86,8 +87,19 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         menu_bar = QMenuBar()
         menu_bar = self.add_file_menu(menu_bar)
         menu_bar = self.add_settings_menu(menu_bar)
+        menu_bar = self.add_help_menu(menu_bar)
 
         self.main_grid_layout.setMenuBar(menu_bar)
+
+    def add_help_menu(self, menu_bar):
+        # Create a help menu
+        helpMenu = menu_bar.addMenu('Help')
+
+        aboutAction = QAction('About', self)
+        aboutAction.setStatusTip('About this application')
+        helpMenu.addAction(aboutAction)
+
+        return menu_bar
 
     def add_file_menu(self, menu_bar):
         # Create a File menu
@@ -103,8 +115,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         file_menu.addSeparator()  # Add a separator
         new_config_action = QAction("New", self)
         new_config_action.triggered.connect(self.emit_new_signal)
-
         file_menu.addAction(new_config_action)
+
         return menu_bar
 
     def add_settings_menu(self, menu_bar):
@@ -117,6 +129,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         zscan_dialog_action = QAction("Z-Scan", self)
         zscan_dialog_action.triggered.connect(self.open_zscan_dialog)
         file_menu.addAction(zscan_dialog_action)
+        zscan_dialog_action.setStatusTip('About Z-Scan')
 
         offsets_dialog_action = QAction("Offsets", self)
         offsets_dialog_action.triggered.connect(self.open_offsets_dialog)
@@ -136,6 +149,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def open_slot_dialog(self):
         slot_dialog = QDialog()
         layout = QHBoxLayout()
+        slot_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
         self.slot_label = QtWidgets.QLabel("Slot: ")
         self.slot_label.setMinimumWidth(40)
         self.slot_label.setMinimumHeight(35)
@@ -152,13 +167,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.slots_combobox.currentTextChanged.connect(self.slot_change)
 
         slot_dialog.setLayout(layout)
-        slot_dialog.exec()
+        slot_dialog.show()
+        slot_dialog.exec_()
 
     def slot_change(self):
         self.sigSlotChanged.emit(self.slots_combobox.text())
 
     def open_zstack_dialog(self):
         zstack_dialog = QDialog()
+        zstack_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
         self.z_stack_checkbox_widget = QCheckBox('Depth/Separation [um]')
         self.z_stack_checkbox_widget.setCheckable(True)
@@ -193,14 +210,16 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_stack_slices_value.valueChanged.connect(self.calculate_z_stack)
 
         zstack_dialog.setLayout(layout)
-        zstack_dialog.exec()
+        zstack_dialog.show()
+        zstack_dialog.exec_()
 
     def open_offsets_dialog(self):
         offsets_dialog = QDialog()
-        layout = QtWidgets.QGridLayout()
+        offsets_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
+        offset_buttons_layout = QtWidgets.QGridLayout()
         self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets:")
         self.OffsetsWidgets.setFixedWidth(130)
-        offset_buttons_layout = QtWidgets.QGridLayout()
 
         self.x_offset_all_value = QtWidgets.QLineEdit()
         self.x_offset_all_value.setText(f"{0:.2f}")
@@ -230,7 +249,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
         self.OffsetsWidgets.setLayout(offset_buttons_layout)
         offsets_dialog.setLayout(offset_buttons_layout)
-        offsets_dialog.exec()
+        offsets_dialog.show()
+        offsets_dialog.exec_()
 
     def emit_offsets(self):
         x, y, z = self.get_offset_all()
@@ -238,6 +258,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def open_zscan_dialog(self):
         zscan_dialog = QDialog()
+        zscan_dialog.setWhatsThis('About Z-Scan')  # TODO: fix, needs to click on sth to show
+        zscan_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+
         layout = QtWidgets.QGridLayout()
         well_base, well_top, z_scan_step = self.get_zscan_values()
 
@@ -266,7 +289,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
         self.calculate_z_scan()
         zscan_dialog.setLayout(layout)
-        zscan_dialog.exec()
+        zscan_dialog.show()
+        zscan_dialog.exec_()
 
     def calculate_z_scan(self):
         self.well_base_value = float(self.well_base_widget.text())
@@ -278,6 +302,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def open_illumination_dialog(self):
         illu_dialog = QDialog()
+        illu_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         # LEDs grid
         self.LEDWidget = QtWidgets.QGroupBox("Lights: Not implemented yet.")
         self.LEDWidget.setMaximumWidth(110)
@@ -301,7 +326,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         # self.LEDWidget.setLayout(led_layout)
 
         illu_dialog.setLayout(led_layout)
-        illu_dialog.exec()
+        illu_dialog.show()
+        illu_dialog.exec_()
 
     def emit_open_signal(self):
         self.sigScanOpen.emit()
@@ -325,7 +351,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def display_open_file_window(self):
         options = QtWidgets.QFileDialog.Options()
-
         path = QtWidgets.QFileDialog.getOpenFileName(
             self, 'Open File', '', 'JSON(*.json)', options=options)
         return path[0]
@@ -540,9 +565,12 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_scan_adjust_focus_widget = guitools.BetterPushButton("Focus!")
         self.z_scan_preview_button = guitools.BetterPushButton("Preview")  # QtWidgets.QPushButton(corrds)
         self.z_scan_preview_button.setStyleSheet("font-size: 14px")
+        self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
+        self.z_scan_stop_button.setStyleSheet("font-size: 14px")
         # self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
         self._z_scan_box.setMinimumWidth(150)
-        layout.addWidget(self.z_scan_preview_button, 0, 0, 1, 2)
+        layout.addWidget(self.z_scan_preview_button, 0, 0, 1, 1)
+        layout.addWidget(self.z_scan_stop_button, 0, 1, 1, 1)
         layout.addWidget(self.z_scan_zpos_label, 1, 0, 1, 2)
         layout.addWidget(self.z_scan_zpos_widget, 2, 0, 1, 1)
         layout.addWidget(self.z_scan_adjust_focus_widget, 2, 1, 1, 1)
@@ -1003,7 +1031,7 @@ class InitializationWizardWidget(QDialog):
     def developer_tab(self):
         dev_tab = QWidget()
         layout = QVBoxLayout()
-        json_keys = ["PROJECT_FOLDER", "DEVICE", "DEVICE_JSON_PATH", "MODULES", "DEBUG", "APP", "STORAGE_PATH"]
+        json_keys = ["PROJECT_FOLDER", "DEVICE", "DEVICE_JSON_PATH", "STORAGE_PATH", "MODULES", "DEBUG", "APP"]
         for key in json_keys:
             if key == "MODULES":
                 label = QLabel(key + ":")
@@ -1057,6 +1085,16 @@ class InitializationWizardWidget(QDialog):
                     layout.addLayout(layout_)
                     self.fields[key] = edit
                 elif key == "PROJECT_FOLDER":
+                    # Create a separator using QFrame
+                    layout_ = QVBoxLayout()
+                    label = QLabel(key + ":")
+                    edit = QPushButton("Select")
+                    edit.clicked.connect(lambda _, key=key: self.open_file_dialog(key))
+                    layout_.addWidget(label)
+                    layout_.addWidget(edit)
+                    layout.addLayout(layout_)
+                    self.fields[key] = edit
+                elif key == "STORAGE_PATH":
                     # Create a separator using QFrame
                     layout_ = QVBoxLayout()
                     label = QLabel(key + ":")
@@ -1140,6 +1178,10 @@ class InitializationWizardWidget(QDialog):
     def open_file_dialog(self, key):
         if key == "PROJECT_FOLDER":
             directory = QFileDialog.getExistingDirectory(self, "Select Project Folder")
+            if directory:
+                self.fields[key].setText(directory)
+        elif key == "STORAGE_PATH":
+            directory = QFileDialog.getExistingDirectory(self, "Select Storage Folder")
             if directory:
                 self.fields[key].setText(directory)
         else:

@@ -76,6 +76,12 @@ def load_configuration_file(file_path):
     else:
         os.environ["EXPERIMENT_JSON_PATH"] = data["EXPERIMENT_JSON_PATH"]
 
+    if not os.path.exists(data["STORAGE_PATH"]):
+        raise NotADirectoryError(f"Storage path does not exist: {data['STORAGE_PATH']}")
+    else:
+        os.environ["STORAGE_PATH"] = data["STORAGE_PATH"]
+        save_storage_path_to_device_config(os.environ["DEVICE_JSON_PATH"], os.environ["STORAGE_PATH"])
+
     # Additional handling for MODULES and DEVICE based on your code
     for module in data["MODULES"]:
         if module not in ["scan", "analysis", "fluidics"]:
@@ -88,6 +94,14 @@ def load_configuration_file(file_path):
     else:
         os.environ["DEVICE"] = data["DEVICE"]
     return data
+
+
+def save_storage_path_to_device_config(device_path, path):
+    with open(device_path, "r") as file:
+        d = json.load(file)
+    d['storage_path'] = path
+    with open(device_path, "w") as file:
+        json.dump(d, file, indent=4)
 
 
 # launch_init_wizard()
@@ -371,6 +385,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             self._widget.init_z_scan_widget(options=(3, 3, 1, 1))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
             self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
+            self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
             self._connect(self._widget.scan_list.sigRowChecked, self.checked_row)
             try:
                 self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
@@ -860,7 +875,6 @@ class LabmaiteDeckController(LiveUpdatedController):
                       partial(self._widget.update_slider, self.preview_z_pos, name))
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
 
-
     def set_z_slice_value(self, value):
         try:
             value = float(value)
@@ -882,9 +896,18 @@ class LabmaiteDeckController(LiveUpdatedController):
     def _connect(self, element, method):
         try:
             element.disconnect()
+            self.__logger.info(f"Disconnecting element {element}")
         except Exception as e:
-            self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+            # self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+            # raise e
+            pass
         element.connect(method)
+
+    def z_scan_stop(self):
+        try:
+            self._widget.stop_preview()
+        except Exception as e:
+            self.__logger.warning(f"No preview to stop. {e}")
 
     def z_scan_preview(self):
         z_end, z_start, z_step = self._widget.get_zscan_values()
