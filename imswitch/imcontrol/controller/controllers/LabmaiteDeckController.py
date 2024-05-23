@@ -6,6 +6,8 @@ import threading
 import time
 from copy import deepcopy
 
+import numpy as np
+from matplotlib import pyplot as plt
 from qtpy import QtCore
 from functools import partial
 from typing import Union, List
@@ -272,8 +274,8 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def value_light_changed(self, light_source, value):
         try:
-            [light.set_intensity(value=value * light.config.value_range_max / 100) for light in
-             self.exp_context.device.light_sources if
+            [light.set_intensity(value=value * light.config.value_range_max / 100) for name, light in
+             self.exp_context.device.light_sources.items() if
              light.config.readable_name == light_source]
             time.sleep(0.1)
         except Exception as e:
@@ -371,16 +373,17 @@ class LabmaiteDeckController(LiveUpdatedController):
         return
 
     def initialize_widget(self):
-        self.initialize_positioners(options=(0, 0, 1, 5))
-        self._widget.init_experiment_buttons((4, 4, 1, 1))
+        self.initialize_positioners(options=(0, 0, 1, 4))
+        self._widget.init_experiment_buttons((4, 3, 1, 1))
         self._widget.init_experiment_info((4, 0, 2, 3))
         row = self._widget.layout_positioner.rowCount()
         self._widget.init_home_button(row=row)
         self._widget.init_park_button(row=row)
         self._widget.init_well_action(row=row)
         self._widget.initialize_deck(self.exp_context.device.stage.deck_manager)
-        self._widget.init_light_sources(self.exp_context.device.light_sources, (4, 3, 1, 1))
-        self._widget.init_scan_list((7, 0, 2, 5))
+        self._widget.init_light_sources(self.exp_context.device.light_sources,
+                                        self.exp_config.scan_params.illumination_params)
+        self._widget.init_scan_list((7, 0, 2, 4))
         if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
             self._widget.init_z_scan_widget(options=(3, 3, 1, 1))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
@@ -853,6 +856,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.sigScanOpen, self.open_experiment_config)
         self._connect(self._widget.sigScanNew, self.new_experiment_config)
         self._connect(self._widget.sigOffsetsSet, self.adjust_all_offsets)
+        self._connect(self._widget.sigPlot3DPlate, self.plot_plate_3d)
 
     def connect_widget_buttons(self):
         self.connect_deck_slots()
@@ -863,6 +867,92 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
+
+    def plot_plate_3d(self):
+        def closest_point(points, target):
+            return min(points, key=lambda p: (p[0] - target[0]) ** 2 + (p[1] - target[1]) ** 2)
+
+        def get_corner_points(positions):
+            xs = [p[0] for p in positions]
+            ys = [p[1] for p in positions]
+            # Determining corner boundaries
+            min_x, max_x, min_y, max_y = min(xs), max(xs), min(ys), max(ys)
+            # Finding the 4 corner points
+            bottom_left = closest_point(positions, (min_x, min_y))
+            bottom_right = closest_point(positions, (max_x, min_y))
+            top_left = closest_point(positions, (min_x, max_y))
+            top_right = closest_point(positions, (max_x, max_y))
+            return [bottom_left, bottom_right, top_left, top_right]
+
+        all_positions = [p.get_absolute_position() for p in self.scan_list]
+        corners = get_corner_points(all_positions)
+        ax = plt.subplot(111, projection='3d')
+        ax.scatter([p[0] for p in all_positions],
+                   [p[1] for p in all_positions],
+                   [p[2] for p in all_positions],
+                   color='b', label="Scan list points")
+        # Fit
+        # Select input:
+        inputs = corners
+        x_input = [p[0] for p in inputs]
+        y_input = [p[1] for p in inputs]
+        z_input = [p[2] for p in inputs]
+        # Use all data:
+        # x_input = xs
+        # y_input = ys
+        # z_input = zs
+
+        # do fit
+        tmp_A = []
+        tmp_b = []
+        for i in range(len(x_input)):
+            tmp_A.append([x_input[i], y_input[i], 1])
+            tmp_b.append(z_input[i])
+        b = np.matrix(tmp_b).T
+        A = np.matrix(tmp_A)
+        # Manual solution
+        fit = (A.T * A).I * A.T * b
+        errors = b - A * fit
+        residual = np.linalg.norm(errors)
+        # Or use Scipy
+        # from scipy.linalg import lstsq
+        # fit, residual, rnk, s = lstsq(A, b)
+        print("solution: %f x + %f y + %f = z" % (fit[0], fit[1], fit[2]))
+        print("errors: \n", errors)
+        print("residual:", residual)
+        # plot plane
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        X, Y = np.meshgrid(np.arange(xlim[0], xlim[1]), np.arange(ylim[0], ylim[1]))
+        Z = np.zeros(X.shape)
+        for r in range(X.shape[0]):
+            for c in range(X.shape[1]):
+                Z[r, c] = fit[0] * X[r, c] + fit[1] * Y[r, c] + fit[2]
+        ax.plot_wireframe(X, Y, Z, color='k')
+        # Corrected values:
+        z_fit = []
+        for c in corners:
+            if c in all_positions:
+                all_positions.remove(c)
+        for x, y, _ in all_positions:
+            z_ = fit[0] * x + fit[1] * y + fit[2]
+            z_fit.append(z_)
+        ax.scatter([i[0] for i in all_positions], [i[1] for i in all_positions], z_fit, color='r',
+                   label="Fitted points")
+        ax.scatter([i[0] for i in inputs], [i[1] for i in inputs], [i[2] for i in inputs], color='g', marker='X',
+                   label="Input points")
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
+        ax.legend()
+
+        plt.title(f"{self.exp_config.exp_info.name} - {self.exp_config.slots[self._get_slot_index()].labware_id}")
+        plt.show()
+
+    def _get_slot_index(self):
+        for i, slot in enumerate(self.exp_config.slots):
+            if slot.slot_number == self.selected_slot:
+                return i
 
     def set_images(self):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -957,7 +1047,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def toggle_widgets(self, show=True):
         self._widget._positioner_widget.show() if show else self._widget._positioner_widget.hide()
         self._widget._wells_group_box.show() if show else self._widget._wells_group_box.hide()
-        self._widget.LEDWidget.show() if show else self._widget.LEDWidget.hide()
+        # self._widget.LEDWidget.show() if show else self._widget.LEDWidget.hide()
         self._widget.home_button.show() if show else self._widget.home_button.hide()
         self._widget.park_button.show() if show else self._widget.park_button.hide()
         self._widget.goto_btn.show() if show else self._widget.goto_btn.hide()
@@ -974,6 +1064,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
+            self.get_illumination_params()
         self.save_scan_list_to_json()
 
     def adjust_all_offsets(self, x, y, z):
@@ -999,6 +1090,10 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.exp_config.scan_params.z_stack_params.z_sep = z_sep / 1000
         self.exp_config.scan_params.z_stack_params.z_slices = z_slices
         self.exp_config.scan_params.z_stack_params.z_height = z_height / 1000
+
+    def get_illumination_params(self):
+        illu_params = self._widget.get_illumination_params()
+        self.exp_config.scan_params.illumination_params = illu_params
 
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""

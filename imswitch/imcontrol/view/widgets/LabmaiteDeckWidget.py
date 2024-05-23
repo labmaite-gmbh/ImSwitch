@@ -57,6 +57,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigDepthChanged = QtCore.Signal(float)
     sigZstackCheckboxChanged = QtCore.Signal(bool)
 
+    sigPlot3DPlate = QtCore.Signal()
+
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
         self.setMaximumWidth(800)
@@ -144,7 +146,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         slot_dialog_action.triggered.connect(self.open_slot_dialog)
         file_menu.addAction(slot_dialog_action)
 
+        file_menu.addSeparator()  # Add a separator
+        plot_plate_3d_dialog_action = QAction("3D Plate plot", self)
+        plot_plate_3d_dialog_action.triggered.connect(self.open_plot_plate_3d_dialog)
+        file_menu.addAction(plot_plate_3d_dialog_action)
+
         return menu_bar
+
+    def open_plot_plate_3d_dialog(self):
+        plot_plate_3d_dialog = QDialog()
+        layout = QHBoxLayout()
+
+        self.sigPlot3DPlate.emit()
 
     def open_slot_dialog(self):
         slot_dialog = QDialog()
@@ -307,27 +320,56 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.LEDWidget = QtWidgets.QGroupBox("Lights: Not implemented yet.")
         self.LEDWidget.setMaximumWidth(110)
         led_layout = QtWidgets.QGridLayout()
-        # self.light_sources_widgets = {}
-        # self.light_sources_signals = {}
-        # for light in self.light_sources:
-        #     LEDWidget = QtWidgets.QSpinBox()
-        #     LEDWidget.setMaximum(100)
-        #     LEDWidget.setMinimum(0)
-        #     LEDWidget.setMinimumWidth(50)
-        #     LEDWidget.setMaximumWidth(60)
-        #     # LED_spinbox.valueChanged.connect(LED_spinbox, self.led_value_change)
-        #     ledName = f'{light.config.readable_name}'
-        #     nameLabel = QtWidgets.QLabel(ledName)
-        #     led_layout.addWidget(nameLabel, len(self.light_sources_widgets), 0)
-        #     led_layout.addWidget(LEDWidget, len(self.light_sources_widgets), 1)
-        #     self.light_sources_widgets[ledName] = LEDWidget
-        #     self.light_sources_signals[ledName] = QtCore.Signal(float)
-        #     LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
-        # self.LEDWidget.setLayout(led_layout)
+        self.LEDWidget = QtWidgets.QGroupBox("Lights: [%]")
+        self.LEDWidget.setMaximumWidth(150)
+        self.LEDWidget.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.LEDWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                     QtWidgets.QSizePolicy.Expanding)
+        self.LED_selection_combobox = QtWidgets.QComboBox()
+        led_layout = QtWidgets.QGridLayout()
+
+        self.light_sources_widgets = {}
+        self.light_sources_signals = {}
+        led_layout.addWidget(self.LED_selection_combobox, len(self.light_sources_widgets), 0)
+        led_layout.addWidget(QLabel("Live [%]"), len(self.light_sources_widgets), 1)
+        led_layout.addWidget(QLabel("Experiment [%]"), len(self.light_sources_widgets), 2)
+        for name, light in self.light_sources.items():
+            self.LED_selection_combobox.addItem(light.config.readable_name)
+            if name in self.illumination_params.keys():
+                exp_light_value = QtWidgets.QSpinBox()
+                exp_light_value.setMaximum(100)
+                exp_light_value.setMinimum(0)
+                value = 100 * self.illumination_params[name].intensity / self.light_sources[name].config.value_range_max
+                exp_light_value.setValue(value)
+                exp_light_value.valueChanged.connect(partial(self.light_intensity_config_change, name))
+            else:
+                exp_light_value = QLabel().setDisabled(True)
+            LEDWidget = QtWidgets.QSpinBox()
+            LEDWidget.setMaximum(100)
+            LEDWidget.setMinimum(0)
+            LEDWidget.setMinimumWidth(50)
+            LEDWidget.setMaximumWidth(60)
+            LEDWidget.setValue(0)
+            # LED_spinbox.valueChanged.connect(LED_spinbox, self.led_value_change)
+            ledName = f'{light.config.readable_name}'
+            nameLabel = QtWidgets.QLabel(ledName)
+
+            self.light_sources_widgets[ledName] = LEDWidget
+            self.light_sources_signals[ledName] = QtCore.Signal(float)
+            led_layout.addWidget(nameLabel, len(self.light_sources_widgets), 0)
+            led_layout.addWidget(LEDWidget, len(self.light_sources_widgets), 1)
+            led_layout.addWidget(exp_light_value, len(self.light_sources_widgets), 2)
+
+            LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
+            # LED_selection_checkbox.checked.connect(partial(self.light_intensity_change, ledName))
+        self.LED_selection_combobox.currentIndexChanged.connect(self.on_combobox_changed)
 
         illu_dialog.setLayout(led_layout)
         illu_dialog.show()
         illu_dialog.exec_()
+
+    def on_combobox_changed(self, index):
+        print(f'Selected: {self.LED_selection_combobox.currentText()}. Index {index}')
 
     def emit_open_signal(self):
         self.sigScanOpen.emit()
@@ -556,7 +598,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 3.00
         self.well_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 5.00
         self.z_scan_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.05
-
         self._z_scan_box = QtWidgets.QGroupBox("Z-Scan:")
         layout = QtWidgets.QGridLayout()
         self.z_scan_zpos_label = QtWidgets.QLabel(f"Adjust focus of row {'-'} to ")
@@ -567,18 +608,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_scan_preview_button.setStyleSheet("font-size: 14px")
         self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
         self.z_scan_stop_button.setStyleSheet("font-size: 14px")
-        # self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
         self._z_scan_box.setMinimumWidth(150)
         layout.addWidget(self.z_scan_preview_button, 0, 0, 1, 1)
         layout.addWidget(self.z_scan_stop_button, 0, 1, 1, 1)
         layout.addWidget(self.z_scan_zpos_label, 1, 0, 1, 2)
         layout.addWidget(self.z_scan_zpos_widget, 2, 0, 1, 1)
         layout.addWidget(self.z_scan_adjust_focus_widget, 2, 1, 1, 1)
-
         self._z_scan_box.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self._z_scan_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                        QtWidgets.QSizePolicy.Expanding)
-        # layout.addWidget(self.z_scan_stop_button)
         self._z_scan_box.setLayout(layout)
         self.main_grid_layout.addWidget(self._z_scan_box, *options)
         self.setLayout(self.main_grid_layout)
@@ -594,9 +632,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
                                                scale=pixelsize, translate=translation,
                                                name=name, blending='additive')
         self.layer.data = im
-        # # Connect to the slider
-        # # slider_layer = self.viewer.layers[name]
-        # self.viewer.dims.events.current_step.connect(self.update_slider)
 
     def update_slider(self, z_pos, name, event):
         index = event.value[0]
@@ -609,58 +644,21 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.__logger.warning(f"Exception: {e}")
         # print(f"Slider index {index} changed to: {event.value[0]}")
 
-    def init_light_sources(self, light_sources, options=(4, 3, 2, 1)):
-        # LEDs grid
+    def init_light_sources(self, light_sources, illumination_params: dict, options=(4, 3, 2, 1)):
         self.light_sources = light_sources
-        self.LEDWidget = QtWidgets.QGroupBox("Lights: [%]")
-        self.LEDWidget.setMaximumWidth(150)
-        self.LEDWidget.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.LEDWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                     QtWidgets.QSizePolicy.Expanding)
-        led_layout = QtWidgets.QGridLayout()
-
-        self.light_sources_widgets = {}
-        self.light_sources_signals = {}
-        for light in light_sources:
-            LEDWidget = QtWidgets.QSpinBox()
-            LEDWidget.setMaximum(100)
-            LEDWidget.setMinimum(0)
-            LEDWidget.setMinimumWidth(50)
-            LEDWidget.setMaximumWidth(60)
-            # LED_spinbox.valueChanged.connect(LED_spinbox, self.led_value_change)
-            ledName = f'{light.config.readable_name}'
-            nameLabel = QtWidgets.QLabel(ledName)
-            led_layout.addWidget(nameLabel, len(self.light_sources_widgets), 0)
-            led_layout.addWidget(LEDWidget, len(self.light_sources_widgets), 1)
-            self.light_sources_widgets[ledName] = LEDWidget
-            self.light_sources_signals[ledName] = QtCore.Signal(float)
-
-            LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
-
-        self.LEDWidget.setLayout(led_layout)
-        self.main_grid_layout.addWidget(self.LEDWidget, *options)
+        self.illumination_params = illumination_params
 
     def light_intensity_change(self, ledName):
-        self.sigSliderValueChanged.emit(ledName, self.light_sources_widgets[ledName].value())
+        if self.LED_selection_combobox.currentText() == ledName:
+            self.sigSliderValueChanged.emit(ledName, self.light_sources_widgets[ledName].value())
 
-    def init_light_source(self, options=(3, 0, 1, 1)):
-        # LED
-        self.LEDWidget = QtWidgets.QGroupBox()
+    def light_intensity_config_change(self, ledName, value):
+        value = self.light_sources[ledName].config.value_range_max * value / 100
+        self.illumination_params[ledName].intensity = value
+        self.ScanInfo.setText("Unsaved changes.")
 
-        led_layout = QtWidgets.QHBoxLayout()
-        self.LabelLED = QtWidgets.QLabel("LED Intensity [mA]: ")
-        self.LED_spinbox = QtWidgets.QSpinBox()
-        self.LED_spinbox.setMaximum(1000)
-        self.LED_spinbox.setMinimum(0)
-        led_layout.addWidget(self.LabelLED)
-        led_layout.addWidget(self.LED_spinbox)
-        self.LED_spinbox.valueChanged.connect(self.led_value_change)
-
-        self.LEDWidget.setLayout(led_layout)
-        self.main_grid_layout.addWidget(self.LEDWidget, *options)
-
-    def led_value_change(self):
-        self.sigSliderLEDValueChanged.emit(self.LED_spinbox.value())
+    def get_illumination_params(self):
+        return self.illumination_params
 
     def setupSliderGui(self, label, valueDecimals, valueRange, tickInterval, singleStep):
         ScanLabel = QtWidgets.QLabel(label)
