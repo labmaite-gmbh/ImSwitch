@@ -975,14 +975,26 @@ class ImSwitchConfigDialog(QDialog):
         self.initUI()
 
     def initUI(self):
+        path = os.getenv("IMSWITCH_CONFIG_PATH", None)
+        if path is not None:
+            self.copy_imswitch_config_file(path)
+        else:
+            self.open_folder()
+            return
+        self.close()
+
+    def copy_imswitch_config_file(self, directory):
+        file = os.sep.join([os.path.abspath(directory), "imcontrol_setups", "btig_uc2_merged_imswitch.json"])
+        if not os.path.exists(file):
+            import shutil
+            file_lm = os.sep.join([os.path.abspath(os.path.curdir), "btig_uc2_merged_imswitch.json"])
+            shutil.copyfile(file_lm, file)
+            time.sleep(0.5)
+
+    def open_folder(self):
         directory = QFileDialog.getExistingDirectory(self, "Please select ImSwitchConfig folder")
         if directory:
-            file = os.sep.join([os.path.abspath(directory), "imcontrol_setups", "btig_uc2_merged_imswitch_.json"])
-            if not os.path.exists(file):
-                import shutil
-                file_lm = os.sep.join([os.path.abspath(os.path.curdir), "btig_uc2_merged_imswitch.json"])
-                shutil.copyfile(file_lm, file)
-                time.sleep(0.5)
+            self.copy_imswitch_config_file(directory)
         self.close()
 
 
