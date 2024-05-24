@@ -1,10 +1,12 @@
 import json
 import os
 import sys
+import time
 from typing import Optional
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog, QGridLayout, \
+from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog, \
+    QGridLayout, \
     QComboBox, QFrame, QMainWindow, QAction, QMenuBar, QTabWidget, QSpinBox
 
 from imswitch.imcommon.model import initLogger
@@ -962,6 +964,24 @@ class MyDelegate(QStyledItemDelegate):
 
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from PyQt5.QtCore import QObject, pyqtSignal
+
+
+class ImSwitchConfigDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("ImSwitchConfig")
+        self.initUI()
+
+    def initUI(self):
+        directory = QFileDialog.getExistingDirectory(self, "Please select ImSwitchConfig folder")
+        if directory:
+            file = os.sep.join([os.path.abspath(directory), "imcontrol_setups", "btig_uc2_merged_imswitch_.json"])
+            if not os.path.exists(file):
+                import shutil
+                file_lm = os.sep.join([os.path.abspath(os.path.curdir), "btig_uc2_merged_imswitch.json"])
+                shutil.copyfile(file_lm, file)
+                time.sleep(0.5)
+        self.close()
 
 
 class InitializationWizard(QObject):
