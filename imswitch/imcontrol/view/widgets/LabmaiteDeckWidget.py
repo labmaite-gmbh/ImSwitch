@@ -6,6 +6,7 @@ from typing import Optional
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog, QGridLayout, \
     QComboBox, QFrame, QMainWindow, QAction, QMenuBar, QTabWidget, QSpinBox
+from dotenv import load_dotenv
 
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
@@ -17,6 +18,7 @@ from .basewidgets import Widget, NapariHybridWidget
 from locai_app.impl.deck.sd_deck_manager import DeckManager
 from config.config_definitions import ZStackParameters, ZScanParameters
 
+load_dotenv()
 
 class LabmaiteDeckWidget(NapariHybridWidget):
     """ Widget in control of the piezo movement. """
@@ -974,13 +976,13 @@ class InitializationWizard(QObject):
         # self.widget.closeEvent.connect(self.load_signal.emit)  # Connect finished signal to save method
 
     def save_json_data(self, data):
-        with open(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]), "w") as file:
+        with open(os.getenv("JSON_CONFIG_PATH"), "w") as file:
             json.dump(data, file, indent=4)
 
     def load_json_data(self):
         data = {}
         try:
-            with open(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]), "r") as file:
+            with open(os.getenv("JSON_CONFIG_PATH"), "r") as file:
                 data = json.load(file)
                 self.widget.load_default_values(data)
         except FileNotFoundError:

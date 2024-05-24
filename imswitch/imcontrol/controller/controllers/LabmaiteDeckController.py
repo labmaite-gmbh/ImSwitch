@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from qtpy import QtCore
 from functools import partial
 from typing import Union, List
+from dotenv import load_dotenv
 
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list
@@ -28,6 +29,7 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
+load_dotenv()
 
 def launch_init_wizard():
     from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
@@ -107,7 +109,7 @@ def save_storage_path_to_device_config(device_path, path):
 
 
 # launch_init_wizard()
-data = load_configuration_file(os.sep.join([os.path.abspath(os.curdir), "labmaite_config.json"]))
+data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
 
 from hardware_api.core.abcs import Camera
