@@ -15,6 +15,13 @@ def main():
     logger.info(f'Starting ImSwitch {imswitch.__version__}')    
 
     app = prepareApp()
+
+    from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import ImSwitchConfigDialog
+
+    dialog = ImSwitchConfigDialog()
+    dialog.show()
+    dialog.close()
+
     enabledModuleIds = modulesconfigtools.getEnabledModuleIds()
     
     if 'imscripting' in enabledModuleIds:

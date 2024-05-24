@@ -955,6 +955,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         for i, slot in enumerate(self.exp_config.slots):
             if slot.slot_number == self.selected_slot:
                 return i
+        return -1
 
     def set_images(self):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -990,8 +991,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             element.disconnect()
             self.__logger.info(f"Disconnecting element {element}")
         except Exception as e:
-            # self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
-            # raise e
             pass
         element.connect(method)
 
@@ -1031,7 +1030,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.hide_widgets()
 
     def stop_scan(self):
-        # if hasattr(self.exp_context, "shared_context"):
         if self.exp_context.state in [ExperimentState.RUNNING]:
             self.exp_context.stop_experiment()
             self.show_widgets()
@@ -1058,7 +1056,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self._widget._z_scan_box.show() if show else self._widget._z_scan_box.hide()
             self._widget.adjust_all_focus_button.show() if show else self._widget.adjust_all_focus_button.hide()
-            # self._widget.OffsetsWidgets.show() if show else self._widget.OffsetsWidgets.hide()
 
     def show_widgets(self):
         self.toggle_widgets(show=True)
@@ -1100,7 +1097,6 @@ class LabmaiteDeckController(LiveUpdatedController):
     def connect_deck_slots(self):
         """Connect Deck Slots (Buttons) to the Sample Pop-Up Method"""
         # Connect signals for all buttons
-        # self._widget.slots_combobox.currentTextChanged.connect(self.select_labware)
         positioner = self.exp_context.device.stage
         self.select_labware(list(positioner.deck_manager.labwares.keys())[0])  # TODO: improve...
 
@@ -1119,8 +1115,6 @@ class LabmaiteDeckController(LiveUpdatedController):
             # Connect signals
             if isinstance(btn, guitools.BetterPushButton):
                 self._connect(btn.clicked, partial(self.select_well, well))
-                # self._disconnect_element(btn.clicked)
-                # btn.clicked.connect(partial(self.select_well, well))
 
     def select_well(self, well: str = None):
         self.__logger.debug(f"Well {well} in slot {self.selected_slot}")
