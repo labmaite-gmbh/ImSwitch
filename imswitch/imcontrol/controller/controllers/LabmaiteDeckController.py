@@ -108,7 +108,7 @@ def save_storage_path_to_device_config(device_path, path):
         json.dump(d, file, indent=4)
 
 
-# launch_init_wizard()
+launch_init_wizard()
 data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
 
@@ -964,8 +964,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         # TODO: hardcoded pixelsize
         name = f"Preview {self.selected_well}"
         self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
-        self._connect(self._widget.viewer.dims.events.current_step,
-                      partial(self._widget.update_slider, self.preview_z_pos, name))
+        self._widget.viewer.dims.events.current_step.connect(partial(self._widget.update_slider, self.preview_z_pos, name))
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
 
     def set_z_slice_value(self, value):
