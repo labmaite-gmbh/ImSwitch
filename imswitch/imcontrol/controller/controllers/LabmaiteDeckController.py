@@ -153,7 +153,7 @@ class CameraWrapper(Camera):
 class LabmaiteDeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
-    sigZScanStart = QtCore.Signal()
+    sigZScanDone = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -847,7 +847,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         threading.Thread(target=move_from_well_update, daemon=True).start()
 
     def connect_signals(self):
-        self._connect(self.sigZScanStart, self.set_images)
+        self._connect(self.sigZScanDone, self.set_images)
         self._connect(self._widget.sigTableSelect, self.selected_row)
         self._connect(self._widget.scan_list.sigGoToTableClicked, self.go_to_position_in_list)
         self._connect(self._widget.scan_list.sigDeleteRowClicked, self.delete_position_in_list)
@@ -955,7 +955,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         for i, slot in enumerate(self.exp_config.slots):
             if slot.slot_number == self.selected_slot:
                 return i
-        return -1
+        return -1 # TODO: check better way to return default slot
 
     def set_images(self):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -975,9 +975,10 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.__logger.warning(f"Exception set_z_slice_value: {e}")
 
     def set_preview_images(self, images, z_pos):
+        del self.preview_images
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
-        self.sigZScanStart.emit()
+        self.sigZScanDone.emit()
 
     def selected_row(self, row):
         self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")
@@ -990,12 +991,17 @@ class LabmaiteDeckController(LiveUpdatedController):
             element.disconnect()
             self.__logger.info(f"Disconnecting element {element}")
         except Exception as e:
+            # self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+            # raise e
             pass
         element.connect(method)
 
     def z_scan_stop(self):
         try:
-            self._widget.stop_preview()
+            self.well_previewer.stop_preview()
+            self._widget.z_scan_preview_button.setDisabled(False)
+            self._widget.z_scan_stop_button.setDisabled(True)
+            self.__logger.info(f"Stopping preview.")
         except Exception as e:
             self.__logger.warning(f"No preview to stop. {e}")
 
@@ -1005,9 +1011,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
         imager = get_preview_imager(exp.scan_params.illumination_params)
 
-        well_previewer = WellPreviewer(z_start=z_start, z_end=z_end, z_step=z_step,
+        self.well_previewer = WellPreviewer(z_start=z_start, z_end=z_end, z_step=z_step,
                                        callback_finish=self.set_preview_images)
-        well_previewer.preview_well(imager, self.exp_context.device)
+        self.well_previewer.preview_well(imager, self.exp_context.device)
+        self._widget.z_scan_preview_button.setDisabled(True)
+        self._widget.z_scan_stop_button.setDisabled(False)
 
     def confirm_start_run(self):
         return self._widget.confirm_start_run()

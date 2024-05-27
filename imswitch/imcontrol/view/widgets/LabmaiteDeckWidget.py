@@ -599,9 +599,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.setLayout(self.main_grid_layout)
 
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
-        self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 3.00
-        self.well_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 5.00
-        self.z_scan_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.05
+        self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
+        self.well_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
+        self.z_scan_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
         self._z_scan_box = QtWidgets.QGroupBox("Z-Scan:")
         layout = QtWidgets.QGridLayout()
         self.z_scan_zpos_label = QtWidgets.QLabel(f"Adjust focus of row {'-'} to ")
