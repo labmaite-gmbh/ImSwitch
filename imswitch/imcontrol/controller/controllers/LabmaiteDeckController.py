@@ -114,7 +114,7 @@ MODULES = data['MODULES']
 
 from hardware_api.core.abcs import Camera
 from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
-from config.config_definitions import ExperimentConfig
+from config.config_definitions import ExperimentConfig, ZScanParameters
 from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
 from locai_app.exp_control.imaging.imagers import get_preview_imager
@@ -387,7 +387,8 @@ class LabmaiteDeckController(LiveUpdatedController):
                                         self.exp_config.scan_params.illumination_params)
         self._widget.init_scan_list((7, 0, 2, 4))
         if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
-            self._widget.init_z_scan_widget(options=(3, 3, 1, 1))
+            self._widget.init_z_scan_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
+                                            options=(3, 3, 1, 1))
             self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
             self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
             self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
@@ -604,8 +605,8 @@ class LabmaiteDeckController(LiveUpdatedController):
             del self._widget._positioner_widget
         self.positioner_name = self._master.positionersManager.getAllDeviceNames()[0]
         # Set up positioners
-        # symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
-        symbols = None
+        symbols = {"X": {0: "<", 1: ">"}, "Y": {0: "ʌ", 1: "v"}, "Z": {0: "+", 1: "-"}}
+        # symbols = None
         for pName, pManager in self._master.positionersManager:
             if not pManager.forPositioning:
                 continue
@@ -966,6 +967,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
         self._widget.viewer.dims.events.current_step.connect(partial(self._widget.update_slider, self.preview_z_pos, name))
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
+        self.z_scan_stop()
 
     def set_z_slice_value(self, value):
         try:
