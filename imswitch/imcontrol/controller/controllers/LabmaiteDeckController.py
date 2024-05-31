@@ -39,6 +39,8 @@ def launch_init_wizard():
 
 
 def load_configuration_file(file_path):
+    if file_path is None:
+        file_path = os.path.abspath(os.path.curdir + "labmaite_config.json")
     with open(file_path, "r") as file:
         data = json.load(file)
 
@@ -108,7 +110,7 @@ def save_storage_path_to_device_config(device_path, path):
         json.dump(d, file, indent=4)
 
 
-launch_init_wizard()
+# launch_init_wizard()
 data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
 
