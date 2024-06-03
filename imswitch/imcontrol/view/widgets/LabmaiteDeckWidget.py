@@ -20,9 +20,6 @@ from .basewidgets import Widget, NapariHybridWidget
 from locai_app.impl.deck.sd_deck_manager import DeckManager
 from config.config_definitions import ZStackParameters, ZScanParameters
 
-load_dotenv()
-
-
 class LabmaiteDeckWidget(NapariHybridWidget):
     """ Widget in control of the piezo movement. """
     sigStepUpClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -976,6 +973,7 @@ class ImSwitchConfigDialog(QDialog):
         self.initUI()
 
     def initUI(self):
+        load_dotenv()
         path = os.getenv("IMSWITCH_CONFIG_PATH", None)
         if path is not None:
             self.copy_imswitch_config_file(path)
@@ -983,9 +981,9 @@ class ImSwitchConfigDialog(QDialog):
             path = self.open_folder()
             env_path = os.path.abspath(os.sep.join([os.path.curdir, ".env"]))
             with open(env_path, 'w') as file:
-                file.write(f'IMSWITCH_CONFIG_PATH: "{path}"\n')
+                file.write(f'IMSWITCH_CONFIG_PATH="{path}"\n')
                 file_path = os.path.abspath(os.sep.join([os.path.curdir, "labmaite_config.json"]))
-                file.write(f'JSON_CONFIG_PATH: "{file_path}"\n')
+                file.write(f'JSON_CONFIG_PATH="{file_path}"\n')
         load_dotenv()
         self.close()
 
@@ -1006,6 +1004,9 @@ class ImSwitchConfigDialog(QDialog):
 
 
 class InitializationWizard(QObject):
+    sigSaveData = pyqtSignal(dict)
+    sigLoadData = pyqtSignal(dict)
+
     def __init__(self):
         super().__init__()
         self.widget = InitializationWizardWidget()
@@ -1019,6 +1020,7 @@ class InitializationWizard(QObject):
             json.dump(data, file, indent=4)
 
     def load_json_data(self):
+        load_dotenv()
         data = {}
         try:
             with open(os.getenv("JSON_CONFIG_PATH"), "r") as file:

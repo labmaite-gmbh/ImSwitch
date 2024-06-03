@@ -38,10 +38,10 @@ def launch_init_wizard():
 
 def load_configuration_file(file_path):
     if file_path is None:
-        env_path = os.path.abspath(os.sep.join([os.path.curdir, ".env.txt"]))
+        env_path = os.path.abspath(os.sep.join([os.path.curdir, ".env"]))
         file_path = os.path.abspath(os.sep.join([os.path.curdir, "labmaite_config.json"]))
         with open(env_path, 'w') as file:
-            file.write(f'JSON_CONFIG_PATH: "{file_path}"\n')
+            file.write(f'JSON_CONFIG_PATH="{file_path}"\n')
     load_dotenv()
     with open(file_path, "r") as file:
         data = json.load(file)
