@@ -29,8 +29,6 @@ _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
 
-load_dotenv()
-
 def launch_init_wizard():
     from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
 
@@ -40,7 +38,11 @@ def launch_init_wizard():
 
 def load_configuration_file(file_path):
     if file_path is None:
-        file_path = os.path.abspath(os.path.curdir + "labmaite_config.json")
+        env_path = os.path.abspath(os.sep.join([os.path.curdir, ".env.txt"]))
+        file_path = os.path.abspath(os.sep.join([os.path.curdir, "labmaite_config.json"]))
+        with open(env_path, 'w') as file:
+            file.write(f'JSON_CONFIG_PATH: "{file_path}"\n')
+    load_dotenv()
     with open(file_path, "r") as file:
         data = json.load(file)
 
@@ -110,7 +112,7 @@ def save_storage_path_to_device_config(device_path, path):
         json.dump(d, file, indent=4)
 
 
-# launch_init_wizard()
+launch_init_wizard()
 data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
 

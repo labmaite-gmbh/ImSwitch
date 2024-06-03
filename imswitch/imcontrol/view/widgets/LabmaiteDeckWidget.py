@@ -22,6 +22,7 @@ from config.config_definitions import ZStackParameters, ZScanParameters
 
 load_dotenv()
 
+
 class LabmaiteDeckWidget(NapariHybridWidget):
     """ Widget in control of the piezo movement. """
     sigStepUpClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -979,8 +980,13 @@ class ImSwitchConfigDialog(QDialog):
         if path is not None:
             self.copy_imswitch_config_file(path)
         else:
-            self.open_folder()
-            return
+            path = self.open_folder()
+            env_path = os.path.abspath(os.sep.join([os.path.curdir, ".env"]))
+            with open(env_path, 'w') as file:
+                file.write(f'IMSWITCH_CONFIG_PATH: "{path}"\n')
+                file_path = os.path.abspath(os.sep.join([os.path.curdir, "labmaite_config.json"]))
+                file.write(f'JSON_CONFIG_PATH: "{file_path}"\n')
+        load_dotenv()
         self.close()
 
     def copy_imswitch_config_file(self, directory):
@@ -996,6 +1002,7 @@ class ImSwitchConfigDialog(QDialog):
         if directory:
             self.copy_imswitch_config_file(directory)
         self.close()
+        return directory
 
 
 class InitializationWizard(QObject):
