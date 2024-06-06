@@ -18,6 +18,7 @@ from functools import partial
 from .basewidgets import Widget, NapariHybridWidget
 
 from locai_app.impl.deck.sd_deck_manager import DeckManager
+from locai_app.exp_control.experiment_context import ExperimentModules
 from config.config_definitions import ZStackParameters, ZScanParameters
 
 class LabmaiteDeckWidget(NapariHybridWidget):
@@ -1073,11 +1074,12 @@ class InitializationWizardWidget(QDialog):
         dev_tab = QWidget()
         layout = QVBoxLayout()
         json_keys = ["PROJECT_FOLDER", "DEVICE", "DEVICE_JSON_PATH", "STORAGE_PATH", "MODULES", "DEBUG", "APP"]
+        modules = ExperimentModules
         for key in json_keys:
             if key == "MODULES":
                 label = QLabel(key + ":")
                 modules_layout = QHBoxLayout()
-                self.modules = ["scan", "analysis", "fluidics"]
+                self.modules = [m.value for m in modules]
                 self.fields[key] = {}
                 modules_layout.addWidget(label)
                 for module in self.modules:
