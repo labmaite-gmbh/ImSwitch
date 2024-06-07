@@ -1079,14 +1079,14 @@ class InitializationWizardWidget(QDialog):
             if key == "MODULES":
                 label = QLabel(key + ":")
                 modules_layout = QHBoxLayout()
-                self.modules = [m.value for m in modules]
+                self.modules = [m for m in modules]
                 self.fields[key] = {}
                 modules_layout.addWidget(label)
                 for module in self.modules:
-                    checkbox = QCheckBox(module)
+                    checkbox = QCheckBox(module.name)
                     modules_layout.addWidget(checkbox)
-                    checkbox.stateChanged.connect(partial(self.toggle_module, module))
-                    self.fields[key][module] = checkbox
+                    checkbox.stateChanged.connect(partial(self.toggle_module, module.name))
+                    self.fields[key][module.name] = checkbox
                 layout.addLayout(modules_layout)
             elif key == "DEBUG":
                 debug_layout = QHBoxLayout()

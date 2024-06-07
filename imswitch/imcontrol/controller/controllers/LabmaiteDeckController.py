@@ -2,10 +2,8 @@ import datetime
 import json
 import os
 import threading
-
 import time
 from copy import deepcopy
-
 import numpy as np
 from matplotlib import pyplot as plt
 from qtpy import QtCore
@@ -13,13 +11,23 @@ from functools import partial
 from typing import Union, List
 from dotenv import load_dotenv
 
-from locai_app.exp_control.common.shared_context import ScanState
-from locai_app.exp_control.scanning.scan_manager import get_array_from_list
 from imswitch.imcommon.model import initLogger, APIExport
 from imswitch.imcontrol.view import guitools as guitools
 from imswitch.imcontrol.model.interfaces.tiscamera_mock import MockCameraTIS
 from imswitch.imcontrol.model.interfaces.gxipycamera import CameraGXIPY
 from imswitch.imcontrol.controller.basecontrollers import LiveUpdatedController
+from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
+
+from config.config_definitions import ExperimentConfig, ZScanParameters
+from hardware_api.core.abcs import Camera
+from locai_app.generics import Point
+from locai_app.exp_control.common.shared_context import ScanState
+from locai_app.exp_control.scanning.scan_manager import get_array_from_list
+from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo, \
+    ExperimentModules
+from locai_app.exp_control.scanning.scan_entities import ScanPoint
+from locai_app.exp_control.imaging.imagers import get_preview_imager
+from locai_app.exp_control.scanning.scan_manager import WellPreviewer
 
 _attrCategory = 'Positioner'
 _positionAttr = 'Position'
@@ -91,10 +99,17 @@ def load_configuration_file(file_path):
         save_storage_path_to_device_config(os.environ["DEVICE_JSON_PATH"], os.environ["STORAGE_PATH"])
 
     # Additional handling for MODULES and DEVICE based on your code
+    used_modules = []
     for module in data["MODULES"]:
-        if module not in ["scan", "analysis", "fluidics"]:
+        modules = ExperimentModules
+        if module not in [m.value for m in modules]:
             raise ValueError(
-                f"´{data['MODULES']} module not available. Available modules: ['scan', 'analysis', 'fluidics']")
+                f"´{data['MODULES']} module not available. Available modules: {[m.value for m in modules]}")
+        else:
+            used_modules.append(modules[module])
+            if module == 'FLUIDICS':
+                os.environ["ELV_SUPPORT"] = '1'
+    data["MODULES"] = used_modules
 
     if data["DEVICE"] not in ["UC2_INVESTIGATOR", "BTIG_A"]:
         raise ValueError(
@@ -115,16 +130,6 @@ def save_storage_path_to_device_config(device_path, path):
 launch_init_wizard()
 data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
-
-from hardware_api.core.abcs import Camera
-from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYManager
-from config.config_definitions import ExperimentConfig, ZScanParameters
-from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo
-from locai_app.exp_control.scanning.scan_entities import ScanPoint
-from locai_app.exp_control.imaging.imagers import get_preview_imager
-from locai_app.exp_control.scanning.scan_manager import WellPreviewer
-from locai_app.generics import Point
-
 
 class CameraWrapper(Camera):
     camera_: Union[MockCameraTIS, CameraGXIPY]
