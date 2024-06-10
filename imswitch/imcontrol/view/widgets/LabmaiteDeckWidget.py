@@ -49,7 +49,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigScanInfoTextChanged = QtCore.Signal(str)
 
     sigPositionUpdate = QtCore.Signal(str, float, float, float)
-    sigLabwareSelect = QtCore.Signal(str)
+    sigLabwareSelect = QtCore.Signal(str, tuple)
     sigWellSelect = QtCore.Signal(str)
 
     sigZPositionUpdate = QtCore.Signal(str)
@@ -154,7 +154,72 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         plot_plate_3d_dialog_action.triggered.connect(self.open_plot_plate_3d_dialog)
         file_menu.addAction(plot_plate_3d_dialog_action)
 
+        file_menu.addSeparator()  # Add a separator
+        autofocus_dialog_action = QAction("Autofocus", self)
+        autofocus_dialog_action.triggered.connect(self.open_autofocus_dialog)
+        file_menu.addAction(autofocus_dialog_action)
+
         return menu_bar
+
+    def open_autofocus_dialog(self):
+        autofocus_dialog = QDialog()
+        autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        layout = QGridLayout()
+
+        self.af_run_button = QPushButton("RUN")
+        self.af_stop_button = QPushButton("STOP")
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
+
+        af_base, af_top, z_scan_step = self.get_af_values()
+
+        af_base_label = QtWidgets.QLabel("AF Start:")
+        self.af_base_widget = QtWidgets.QLineEdit(f"{af_base}")
+        self.af_base_widget.setMaximumWidth(60)
+
+        af_top_label = QtWidgets.QLabel("AF End:")
+        self.af_top_widget = QtWidgets.QLineEdit(f"{af_top}")
+        self.af_top_widget.setMaximumWidth(60)
+
+        self.z_scan_step_label = QtWidgets.QLabel("Step:")
+        self.af_step_widget = QtWidgets.QLineEdit(f"{z_scan_step}")
+        self.af_step_widget.setMaximumWidth(60)
+
+        layout.addWidget(af_base_label, 0, 0, 1, 1)
+        layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
+        layout.addWidget(af_top_label, 1, 0, 1, 1)
+        layout.addWidget(self.af_top_widget, 1, 1, 1, 1)
+        layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
+        layout.addWidget(self.af_step_widget, 0, 3, 1, 1)
+        layout.addWidget(self.af_run_button, 2, 0, 1, 2)
+        layout.addWidget(self.af_stop_button, 2, 2, 1, 2)
+
+        self.af_base_widget.textChanged.connect(self.calculate_autofocus)  # Connect valueChanged signal
+        self.af_top_widget.textChanged.connect(self.calculate_autofocus)
+        self.af_step_widget.textChanged.connect(self.calculate_autofocus)
+
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
+
+        self.calculate_autofocus()
+        autofocus_dialog.setLayout(layout)
+        autofocus_dialog.show()
+        autofocus_dialog.exec_()
+
+    def calculate_autofocus(self):
+        self.af_base_value = float(self.af_base_widget.text())
+        self.af_top_value = float(self.af_top_widget.text())
+        self.z_scan_step_value = float(self.af_step_widget.text())
+
+    def run_autofocus(self):
+        self.af_run_button.setDisabled(True)
+        self.af_stop_button.setDisabled(False)
+        self.sigAutofocusRun.emit()
+
+    def stop_autofocus(self):
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
+        self.sigAutofocusStop.emit()
 
     def open_plot_plate_3d_dialog(self):
         plot_plate_3d_dialog = QDialog()
@@ -315,6 +380,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def get_zscan_values(self):
         return self.well_base_value, self.well_top_value, self.z_scan_step_value
+
+    def get_af_values(self):
+        return self.af_base_value, self.af_top_value, self.af_step_value
 
     def open_illumination_dialog(self):
         illu_dialog = QDialog()
@@ -597,6 +665,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.z_stack_slice_sep_value.textChanged.disconnect(self.calculate_z_stack)
         self.setLayout(self.main_grid_layout)
 
+    def init_autofocus_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
+        self.af_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
+        self.af_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
+        self.af_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
+
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
         self.well_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
@@ -695,19 +768,24 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
 
-        self.adjust_all_focus_button = guitools.BetterPushButton('Focus All')
-        self.adjust_all_focus_button.setStyleSheet("font-size: 14px")
-        self.adjust_all_focus_button.setFixedHeight(30)
-        self.adjust_all_focus_button.setMinimumWidth(40)
-
         exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
-        exp_buttons_layout.addWidget(self.ScanStopButton, 0, 1, 1, 1)
-        exp_buttons_layout.addWidget(self.adjust_all_focus_button, 1, 0, 1, 2)
+        exp_buttons_layout.addWidget(self.ScanStopButton, 1, 0, 1, 1)
 
         self.ScanActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)
         self.ScanActionsWidget.setLayout(exp_buttons_layout)
         self.main_grid_layout.addWidget(self.ScanActionsWidget, *options)
+
+    def init_focus_all_button(self, options=(3, 4, 1, 1)):
+        layout = QtWidgets.QHBoxLayout()
+        self.adjust_all_focus_button = guitools.BetterPushButton('Focus All')
+        self.adjust_all_focus_button.setStyleSheet("font-size: 14px")
+        self.adjust_all_focus_button.setFixedHeight(30)
+        self.adjust_all_focus_button.setMinimumWidth(40)
+        layout.addWidget(self.adjust_all_focus_button)
+        self.adjust_all_focus_button.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                   QtWidgets.QSizePolicy.Expanding)
+        self.main_grid_layout.addWidget(self.adjust_all_focus_button, *options)
 
     def init_offset_buttons(self, options=(3, 4, 1, 1)):
         self.adjust_offset_button = guitools.BetterPushButton('Set!')
@@ -736,9 +814,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.main_grid_layout.addWidget(self.ScanInfo_widget, *options)
         self.setLayout(self.main_grid_layout)
 
-    def initialize_deck(self, deck_manager: DeckManager):
+    def initialize_deck(self, deck_manager: DeckManager, options=(1, 0, 2, 4)):
         self._deck_dict = deck_manager.deck_layout
         self._labware_dict = deck_manager.labwares
+
         self.sigLabwareSelect.connect(self.select_labware)
         self.sigWellSelect.connect(self.select_well)
 

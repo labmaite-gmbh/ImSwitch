@@ -385,8 +385,9 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def initialize_widget(self):
         self.initialize_positioners(options=(0, 0, 1, 4))
-        self._widget.init_experiment_buttons((4, 3, 1, 1))
-        self._widget.init_experiment_info((4, 0, 2, 3))
+        self._widget.init_experiment_buttons((4, 4, 2, 1))
+        self._widget.init_focus_all_button((3, 4, 1, 1))
+        self._widget.init_experiment_info((4, 0, 2, 4))
         row = self._widget.layout_positioner.rowCount()
         self._widget.init_home_button(row=row)
         self._widget.init_park_button(row=row)
@@ -395,21 +396,19 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_light_sources(self.exp_context.device.light_sources,
                                         self.exp_config.scan_params.illumination_params)
         self._widget.init_scan_list((7, 0, 2, 4))
-        if "BCALL" in os.environ["APP"] or "ICARUS" in os.environ["APP"]:
-            self._widget.init_z_scan_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
-                                            options=(3, 3, 1, 1))
-            self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
-            self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
-            self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
-            self._connect(self._widget.scan_list.sigRowChecked, self.checked_row)
-            try:
-                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
-                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Labware"), True)
-                self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Done"), False)
-            except ValueError as e:
-                self.__logger.warning(f"Error when initializing LabmaiteDeckWidget's Scan List. Exception: {e} ")
-        else:
-            pass
+        self._widget.init_z_scan_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
+                                        options=(3, 3, 1, 1))
+        self._widget.init_autofocus_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=5.5, z_scan_step=0.01))
+        self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
+        self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
+        self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
+        self._connect(self._widget.scan_list.sigRowChecked, self.checked_row)
+        try:
+            self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
+            self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Labware"), True)
+            self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Done"), False)
+        except ValueError as e:
+            self.__logger.warning(f"Error when initializing LabmaiteDeckWidget's Scan List. Exception: {e} ")
 
     def checked_row(self, state, row):
         self.scan_list[row].checked = state
