@@ -21,6 +21,7 @@ from locai_app.impl.deck.sd_deck_manager import DeckManager
 from locai_app.exp_control.experiment_context import ExperimentModules
 from config.config_definitions import ZStackParameters, ZScanParameters
 
+
 class LabmaiteDeckWidget(NapariHybridWidget):
     """ Widget in control of the piezo movement. """
     sigStepUpClicked = QtCore.Signal(str, str)  # (positionerName, axis)
@@ -49,7 +50,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigScanInfoTextChanged = QtCore.Signal(str)
 
     sigPositionUpdate = QtCore.Signal(str, float, float, float)
-    sigLabwareSelect = QtCore.Signal(str, tuple)
+    sigLabwareSelect = QtCore.Signal(str)
     sigWellSelect = QtCore.Signal(str)
 
     sigZPositionUpdate = QtCore.Signal(str)
@@ -61,6 +62,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigZstackCheckboxChanged = QtCore.Signal(bool)
 
     sigPlot3DPlate = QtCore.Signal()
+
+    sigAutofocusRun = QtCore.Signal()
+    sigAutofocusStop = QtCore.Signal()
 
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
@@ -209,7 +213,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def calculate_autofocus(self):
         self.af_base_value = float(self.af_base_widget.text())
         self.af_top_value = float(self.af_top_widget.text())
-        self.z_scan_step_value = float(self.af_step_widget.text())
+        self.af_step_value = float(self.af_step_widget.text())
 
     def run_autofocus(self):
         self.af_run_button.setDisabled(True)
@@ -568,7 +572,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
                     btn.setStyleSheet("background-color: grey; font-size: 14px")
         self.well_action_widget.setText(f"Selected well: {self.current_well}")
 
-    def select_labware(self, slot: str = None, options=(1, 0, 3, 3)):
+    def select_labware(self, options=(1, 0, 3, 3), slot: str = None):
         if slot is None:
             slot = self.slots_combobox.currentText()
         self._select_labware(str(slot), options)
@@ -650,6 +654,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.__logger.warning(f"calculate_z_stack:  {e}")
 
     def get_z_stack_values_in_um(self):
+        self.calculate_z_stack()
         return self.z_height, self.z_sep, self.z_slices
 
     def toggle_z_stack_options(self):
@@ -669,6 +674,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
         self.af_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
         self.af_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
+        self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
+        self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
+        self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
 
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
@@ -678,18 +686,24 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout = QtWidgets.QGridLayout()
         self.z_scan_zpos_label = QtWidgets.QLabel(f"Adjust focus of row {'-'} to ")
         self.z_scan_zpos_label.setWordWrap(True)
+        self.z_scan_zpos_label.setMaximumWidth(150)
         self.z_scan_zpos_widget = QtWidgets.QLineEdit('')
+        self.z_scan_zpos_widget.setMaximumWidth(60)
         self.z_scan_adjust_focus_widget = guitools.BetterPushButton("Focus!")
+        self.z_scan_adjust_focus_widget.setStyleSheet("font-size: 14px")
+        self.z_scan_adjust_focus_widget.setMaximumWidth(60)
         self.z_scan_preview_button = guitools.BetterPushButton("Preview")  # QtWidgets.QPushButton(corrds)
         self.z_scan_preview_button.setStyleSheet("font-size: 14px")
+        self.z_scan_preview_button.setMinimumWidth(100)
         self.z_scan_stop_button = guitools.BetterPushButton("Stop")  # QtWidgets.QPushButton(corrds)
         self.z_scan_stop_button.setStyleSheet("font-size: 14px")
-        self._z_scan_box.setMinimumWidth(150)
+        self.z_scan_stop_button.setMinimumWidth(30)
+        # self._z_scan_box.setMinimumWidth(150)
         layout.addWidget(self.z_scan_preview_button, 0, 0, 1, 1)
         layout.addWidget(self.z_scan_stop_button, 0, 1, 1, 1)
+        layout.addWidget(self.z_scan_adjust_focus_widget, 0, 2, 1, 1)
         layout.addWidget(self.z_scan_zpos_label, 1, 0, 1, 2)
-        layout.addWidget(self.z_scan_zpos_widget, 2, 0, 1, 1)
-        layout.addWidget(self.z_scan_adjust_focus_widget, 2, 1, 1, 1)
+        layout.addWidget(self.z_scan_zpos_widget, 1, 2, 1, 1)
         self._z_scan_box.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self._z_scan_box.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                        QtWidgets.QSizePolicy.Expanding)
@@ -818,7 +832,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self._deck_dict = deck_manager.deck_layout
         self._labware_dict = deck_manager.labwares
 
-        self.sigLabwareSelect.connect(self.select_labware)
+        self.sigLabwareSelect.connect(partial(self.select_labware, options))
         self.sigWellSelect.connect(self.select_well)
 
     def init_home_button(self, row=None):

@@ -22,11 +22,11 @@ from config.config_definitions import ExperimentConfig, ZScanParameters
 from hardware_api.core.abcs import Camera
 from locai_app.generics import Point
 from locai_app.exp_control.common.shared_context import ScanState
-from locai_app.exp_control.scanning.scan_manager import get_array_from_list
+from locai_app.exp_control.scanning.scan_manager import get_array_from_list, Autofocus
 from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo, \
     ExperimentModules
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
-from locai_app.exp_control.imaging.imagers import get_preview_imager
+from locai_app.exp_control.imaging.imagers import get_preview_imager, get_imager, create_imagers
 from locai_app.exp_control.scanning.scan_manager import WellPreviewer
 
 _attrCategory = 'Positioner'
@@ -36,6 +36,7 @@ _homeAttr = "Home"
 _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
+
 
 def launch_init_wizard():
     from imswitch.imcontrol.view.widgets.LabmaiteDeckWidget import InitializationWizard
@@ -131,6 +132,7 @@ launch_init_wizard()
 data = load_configuration_file(os.getenv("JSON_CONFIG_PATH"))
 MODULES = data['MODULES']
 
+
 class CameraWrapper(Camera):
     camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
@@ -163,6 +165,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
     sigZScanDone = QtCore.Signal()
+    sigAutofocusDone = QtCore.Signal(list)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -385,9 +388,9 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def initialize_widget(self):
         self.initialize_positioners(options=(0, 0, 1, 4))
-        self._widget.init_experiment_buttons((4, 4, 2, 1))
-        self._widget.init_focus_all_button((3, 4, 1, 1))
-        self._widget.init_experiment_info((4, 0, 2, 4))
+        self._widget.init_experiment_buttons((4, 3, 1, 1))
+        self._widget.init_focus_all_button((3, 3, 1, 1))
+        self._widget.init_experiment_info((3, 0, 2, 2))
         row = self._widget.layout_positioner.rowCount()
         self._widget.init_home_button(row=row)
         self._widget.init_park_button(row=row)
@@ -396,9 +399,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_light_sources(self.exp_context.device.light_sources,
                                         self.exp_config.scan_params.illumination_params)
         self._widget.init_scan_list((7, 0, 2, 4))
-        self._widget.init_z_scan_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
-                                        options=(3, 3, 1, 1))
-        self._widget.init_autofocus_widget(default_values_in_mm=ZScanParameters(well_base=4.0, well_top=5.5, z_scan_step=0.01))
+        self._widget.init_z_scan_widget(
+            default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
+            options=(3, 2, 2, 1))
+        self._widget.init_autofocus_widget(
+            default_values_in_mm=ZScanParameters(well_base=4.0, well_top=5.5, z_scan_step=0.01))
         self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
         self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
         self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
@@ -836,7 +841,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger.debug(f"Slot {slot}")
         self.selected_slot = slot
         self.selected_well = None
-        self._widget.sigLabwareSelect.emit(self.selected_slot)
+        self._widget.sigLabwareSelect.emit(self.selected_slot)  # Slot->str
         self._widget.sigWellSelect.emit(self.selected_well)
 
     def move_to_well(self, well: str, slot: str):
@@ -857,6 +862,7 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def connect_signals(self):
         self._connect(self.sigZScanDone, self.set_images)
+        self._connect(self.sigAutofocusDone, self.set_autofocus_images)
         self._connect(self._widget.sigTableSelect, self.selected_row)
         self._connect(self._widget.scan_list.sigGoToTableClicked, self.go_to_position_in_list)
         self._connect(self._widget.scan_list.sigDeleteRowClicked, self.delete_position_in_list)
@@ -868,6 +874,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.sigScanNew, self.new_experiment_config)
         self._connect(self._widget.sigOffsetsSet, self.adjust_all_offsets)
         self._connect(self._widget.sigPlot3DPlate, self.plot_plate_3d)
+        self._connect(self._widget.sigAutofocusRun, self.run_autofocus)
+        self._connect(self._widget.sigAutofocusStop, self.stop_autofocus)
 
     def connect_widget_buttons(self):
         self.connect_deck_slots()
@@ -878,6 +886,26 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
+
+    def stop_autofocus(self):
+        try:
+            self.autofocus.stop_autofocus()
+            # widget buttons changes directly on click on front-end -> better signal use?
+            self.__logger.info(f"Stopping autofocus.")
+        except Exception as e:
+            self.__logger.warning(f"No autofocus to stop. {e}")
+
+    def run_autofocus(self):
+        exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
+        af_params = exp.scan_params.autofocus_params
+        z_end, z_start, z_step = self._widget.get_af_values()
+        self.autofocus = Autofocus(method=af_params.method, z_start=z_start, z_end=z_end,
+                                   z_step=z_step, imager=af_params.imager, callback_finish=self.set_autofocus)
+        imagers = create_imagers(exp)
+        imager = get_imager(self.autofocus.imager, imagers)
+        self.autofocus.execute_autofocus(imager, self.exp_context.device)
+        self.__logger.info(f"Starting autofocus.")
+        # widget buttons changes directly on click on front-end -> better signal use?
 
     def plot_plate_3d(self):
         def closest_point(points, target):
@@ -964,7 +992,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         for i, slot in enumerate(self.exp_config.slots):
             if slot.slot_number == self.selected_slot:
                 return i
-        return -1 # TODO: check better way to return default slot
+        return -1  # TODO: check better way to return default slot
 
     def set_images(self):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -973,7 +1001,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         # TODO: hardcoded pixelsize
         name = f"Preview {self.selected_well}"
         self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
-        self._widget.viewer.dims.events.current_step.connect(partial(self._widget.update_slider, self.preview_z_pos, name))
+        self._widget.viewer.dims.events.current_step.connect(
+            partial(self._widget.update_slider, self.preview_z_pos, name))
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
         self.z_scan_stop()
 
@@ -989,6 +1018,28 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
         self.sigZScanDone.emit()
+
+    def set_autofocus(self, images, z_pos, scores, z_focus: float):
+        del self.preview_images
+        self.preview_images = get_array_from_list(images)
+        self.preview_z_pos = z_pos
+        self.exp_context.device.stage.positioner.z_axis.move_absolute(z_focus)
+        # TODO: save focus
+        self.sigAutofocusDone.emit(scores)
+
+    def set_autofocus_images(self, scores):
+        if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
+            self._widget.viewer.dims.events.current_step.disconnect(
+                self._widget.viewer.dims.events.current_step.callbacks[0])
+        # TODO: hardcoded pixelsize
+        name = f"Preview {self.selected_well}"
+        self._widget.set_preview(self.preview_images, name=name, pixelsize=(1, 0.45, 0.45))  # TODO: fix hardcode
+        self._widget.viewer.dims.events.current_step.connect(
+            partial(self._widget.update_slider, self.preview_z_pos, name))
+        self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
+        self.stop_autofocus()
+        self.autofocus.plot_results(scores)
+
 
     def selected_row(self, row):
         self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")
@@ -1022,10 +1073,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         imager = get_preview_imager(exp.scan_params.illumination_params)
 
         self.well_previewer = WellPreviewer(z_start=z_start, z_end=z_end, z_step=z_step,
-                                       callback_finish=self.set_preview_images)
+                                            callback_finish=self.set_preview_images)
         self.well_previewer.preview_well(imager, self.exp_context.device)
         self._widget.z_scan_preview_button.setDisabled(True)
         self._widget.z_scan_stop_button.setDisabled(False)
+        self.__logger.info(f"Starting preview.")
 
     def confirm_start_run(self):
         return self._widget.confirm_start_run()
