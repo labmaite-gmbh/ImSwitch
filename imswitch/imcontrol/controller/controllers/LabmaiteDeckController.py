@@ -444,6 +444,30 @@ class LabmaiteDeckController(LiveUpdatedController):
     def update_list_in_widget(self):
         self._widget.update_scan_list(self.scan_list)
 
+    def run_autofocus_in_list(self, row):
+        self.go_to_position_in_list(row)
+
+        def set_autofocus_in_row(images, z_pos, scores, z_focus: float):
+            del self.preview_images
+            self.preview_images = get_array_from_list(images)
+            self.preview_z_pos = z_pos
+            self.sigAutofocusDone.emit(scores)
+            try:
+                positioner = self.exp_context.device.stage
+                p = positioner.position()
+                p_new = Point(x=p.x, y=p.y, z=z_focus)
+                self.move(p_new)
+                self.__logger.info(f"Moved to focus (AF), z = {z_focus} mm")
+                #self.adjust_focus_in_list(row)  # save focus
+                self._widget.scan_list.sigAdjustFocusClicked.emit(row)
+                self.stop_autofocus()
+                self.__logger.info(f"Saved focus to row {row} (AF), z = {z_focus} mm")
+            except Exception as e:
+                self.stop_autofocus()
+                self.__logger.warning(f"Didn't move to focus point. {e}")
+
+        self.run_autofocus(callback_finish=set_autofocus_in_row)
+
     def go_to_position_in_list(self, row):
         positioner = self.exp_context.device.stage
         well = self.scan_list[row].well
@@ -869,6 +893,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.scan_list.sigAdjustFocusClicked, self.adjust_focus_in_list)
         self._connect(self._widget.scan_list.sigAdjustPositionClicked, self.adjust_position_in_list)
         self._connect(self._widget.scan_list.sigDuplicatePositionClicked, self.duplicate_position_in_list)
+        self._connect(self._widget.scan_list.sigRunAutofocusClicked, self.run_autofocus_in_list)
         self._connect(self._widget.sigScanSave, self.save_experiment_config)
         self._connect(self._widget.sigScanOpen, self.open_experiment_config)
         self._connect(self._widget.sigScanNew, self.new_experiment_config)
@@ -890,20 +915,32 @@ class LabmaiteDeckController(LiveUpdatedController):
     def stop_autofocus(self):
         try:
             self.autofocus.stop_autofocus()
+            self._widget.af_run_button.setDisabled(False)
+            self._widget.af_stop_button.setDisabled(True)
             # widget buttons changes directly on click on front-end -> better signal use?
             self.__logger.info(f"Stopping autofocus.")
         except Exception as e:
             self.__logger.warning(f"No autofocus to stop. {e}")
 
-    def run_autofocus(self):
+    def run_autofocus(self, callback_finish=None):
+        callback_finish = self._set_autofocus if callback_finish is None else callback_finish
+
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
         af_params = exp.scan_params.autofocus_params
         z_end, z_start, z_step = self._widget.get_af_values()
         self.autofocus = Autofocus(method=af_params.method, z_start=z_start, z_end=z_end,
-                                   z_step=z_step, imager=af_params.imager, callback_finish=self.set_autofocus)
+                                   z_step=z_step, imager=af_params.imager, callback_finish=callback_finish)
+        try:
+            p = self.exp_context.device.stage.position()
+            self.exp_context.device.stage.move_absolute(p)
+        except Exception as e:
+            self.__logger.warning(f"Position not valid for autofocus. {e}")
+            return
         imagers = create_imagers(exp)
         imager = get_imager(self.autofocus.imager, imagers)
         self.autofocus.execute_autofocus(imager, self.exp_context.device)
+        self._widget.af_run_button.setDisabled(True)
+        self._widget.af_stop_button.setDisabled(False)
         self.__logger.info(f"Starting autofocus.")
         # widget buttons changes directly on click on front-end -> better signal use?
 
@@ -1019,13 +1056,21 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_z_pos = z_pos
         self.sigZScanDone.emit()
 
-    def set_autofocus(self, images, z_pos, scores, z_focus: float):
+    def _set_autofocus(self, images, z_pos, scores, z_focus: float):
         del self.preview_images
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
-        self.exp_context.device.stage.positioner.z_axis.move_absolute(z_focus)
         # TODO: save focus
         self.sigAutofocusDone.emit(scores)
+        try:
+            positioner = self.exp_context.device.stage
+            p = positioner.position()
+            p_new = Point(x=p.x, y=p.y, z=z_focus)
+            self.move(p_new)
+            self.__logger.info(f"Moved to focus (AF), z = {z_focus} mm")
+        except Exception as e:
+            self.stop_autofocus()
+            self.__logger.warning(f"Didn't move to focus point. {e}")
 
     def set_autofocus_images(self, scores):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
@@ -1039,7 +1084,6 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
         self.stop_autofocus()
         self.autofocus.plot_results(scores)
-
 
     def selected_row(self, row):
         self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")

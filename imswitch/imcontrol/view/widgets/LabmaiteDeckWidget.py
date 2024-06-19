@@ -170,11 +170,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
 
-        self.af_run_button = QPushButton("RUN")
-        self.af_stop_button = QPushButton("STOP")
-        self.af_run_button.setDisabled(False)
-        self.af_stop_button.setDisabled(True)
-
         af_base, af_top, z_scan_step = self.get_af_values()
 
         af_base_label = QtWidgets.QLabel("AF Start:")
@@ -195,6 +190,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.af_top_widget, 1, 1, 1, 1)
         layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
         layout.addWidget(self.af_step_widget, 0, 3, 1, 1)
+        # af_run_button, af_stop_button in init_autofocus_widget.
         layout.addWidget(self.af_run_button, 2, 0, 1, 2)
         layout.addWidget(self.af_stop_button, 2, 2, 1, 2)
 
@@ -216,19 +212,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_step_value = float(self.af_step_widget.text())
 
     def run_autofocus(self):
-        self.af_run_button.setDisabled(True)
-        self.af_stop_button.setDisabled(False)
         self.sigAutofocusRun.emit()
 
     def stop_autofocus(self):
-        self.af_run_button.setDisabled(False)
-        self.af_stop_button.setDisabled(True)
         self.sigAutofocusStop.emit()
 
     def open_plot_plate_3d_dialog(self):
         plot_plate_3d_dialog = QDialog()
         layout = QHBoxLayout()
-
         self.sigPlot3DPlate.emit()
 
     def open_slot_dialog(self):
@@ -677,6 +668,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
+        self.af_run_button = QPushButton("RUN")
+        self.af_stop_button = QPushButton("STOP")
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
 
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
@@ -1361,6 +1356,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigDeleteRowClicked = QtCore.Signal(int)
     sigAdjustPositionClicked = QtCore.Signal(int)
     sigDuplicatePositionClicked = QtCore.Signal(int)
+    sigRunAutofocusClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
     sigRowChecked = QtCore.Signal(bool, int)
 
@@ -1480,6 +1476,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.getSignal(self, "sigAdjustPositionClicked")) else None
             duplicate_pos_action = menu.addAction("Duplicate Position") if self.isSignalConnected(
                 self.getSignal(self, "sigDuplicatePositionClicked")) else None
+            run_autofocus_action = menu.addAction("Run Autofocus") if self.isSignalConnected(
+                self.getSignal(self, "sigRunAutofocusClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)
@@ -1491,9 +1489,14 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.adjust_position_action(row)
             elif action == duplicate_pos_action:
                 self.duplicate_position_action(row)
+            elif action == run_autofocus_action:
+                self.run_autofocus(row)
 
     def go_to_action(self, row):
         self.sigGoToTableClicked.emit(row)
+
+    def run_autofocus(self, row):
+        self.sigRunAutofocusClicked.emit(row)
 
     def adjust_focus_action(self, row):
         self.sigAdjustFocusClicked.emit(row)
