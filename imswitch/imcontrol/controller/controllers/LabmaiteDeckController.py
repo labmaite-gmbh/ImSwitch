@@ -26,7 +26,7 @@ from locai_app.exp_control.scanning.scan_manager import get_array_from_list, Aut
 from locai_app.exp_control.experiment_context import ExperimentState, ExperimentContext, ExperimentLiveInfo, \
     ExperimentModules
 from locai_app.exp_control.scanning.scan_entities import ScanPoint
-from locai_app.exp_control.imaging.imagers import get_preview_imager, get_imager, create_imagers
+from locai_app.exp_control.imaging.imagers import get_preview_imager, get_autofocus_imager
 from locai_app.exp_control.scanning.scan_manager import WellPreviewer
 
 _attrCategory = 'Positioner'
@@ -300,6 +300,8 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def closeEvent(self):
         self.stop_scan()
+        self._widget.close()
+        self.exp_context.device.shutdown()
 
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
         deck_manager = self.exp_context.device.stage.deck_manager
@@ -936,8 +938,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         except Exception as e:
             self.__logger.warning(f"Position not valid for autofocus. {e}")
             return
-        imagers = create_imagers(exp)
-        imager = get_imager(self.autofocus.imager, imagers)
+        # imagers = create_imagers(exp)
+        # imager = get_imager(self.autofocus.imager, imagers)
+        imager = get_autofocus_imager(exp)
         self.autofocus.execute_autofocus(imager, self.exp_context.device)
         self._widget.af_run_button.setDisabled(True)
         self._widget.af_stop_button.setDisabled(False)
@@ -1148,6 +1151,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.show_widgets()
         else:
             print(f"No running experiment to stop.")
+        return
 
     def experiment_finished(self):
         self._widget.ScanStartButton.setEnabled(True)
