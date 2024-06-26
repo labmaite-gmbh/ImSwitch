@@ -897,8 +897,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.scan_list)
         main_layout.addLayout(buttons_layout)
-        self.scan_list_widget.setMinimumHeight(250)
-        self.scan_list_widget.setMaximumHeight(500)
+        self.scan_list_widget.setMinimumHeight(350)
+        self.scan_list_widget.setMaximumHeight(700)
 
         self.scan_list_widget.setLayout(main_layout)
         self.main_grid_layout.addWidget(self.scan_list_widget, *options)
