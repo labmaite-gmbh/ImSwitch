@@ -428,14 +428,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
             LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
             # LED_selection_checkbox.checked.connect(partial(self.light_intensity_change, ledName))
-        self.LED_selection_combobox.currentIndexChanged.connect(self.on_combobox_changed)
+        self.LED_selection_combobox.currentIndexChanged.connect(self.on_lightsource_combobox_changed)
 
         illu_dialog.setLayout(led_layout)
         illu_dialog.show()
         illu_dialog.exec_()
 
-    def on_combobox_changed(self, index):
+    def on_lightsource_combobox_changed(self, index):
         print(f'Selected: {self.LED_selection_combobox.currentText()}. Index {index}')
+        self.light_intensity_change(self.LED_selection_combobox.currentText())
 
     def emit_open_signal(self):
         self.sigScanOpen.emit()
