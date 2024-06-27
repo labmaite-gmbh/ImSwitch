@@ -898,7 +898,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.scan_list)
         main_layout.addLayout(buttons_layout)
-        self.scan_list_widget.setMinimumHeight(350)
+        self.scan_list_widget.setMinimumHeight(300)
         self.scan_list_widget.setMaximumHeight(700)
 
         self.scan_list_widget.setLayout(main_layout)
@@ -1360,6 +1360,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigRunAutofocusClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
     sigRowChecked = QtCore.Signal(bool, int)
+    sigAdjustFocusPerWellClicked = QtCore.Signal(int)
 
     from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
@@ -1479,6 +1480,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.getSignal(self, "sigDuplicatePositionClicked")) else None
             run_autofocus_action = menu.addAction("Run Autofocus") if self.isSignalConnected(
                 self.getSignal(self, "sigRunAutofocusClicked")) else None
+            adjust_focus_for_well_action = menu.addAction("Adjust Focus for Well") if self.isSignalConnected(
+                self.getSignal(self, "sigAdjustFocusPerWellClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)
@@ -1492,12 +1495,17 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.duplicate_position_action(row)
             elif action == run_autofocus_action:
                 self.run_autofocus(row)
+            elif action == adjust_focus_for_well_action:
+                self.adjust_focus_for_well_action(row)
 
     def go_to_action(self, row):
         self.sigGoToTableClicked.emit(row)
 
     def run_autofocus(self, row):
         self.sigRunAutofocusClicked.emit(row)
+
+    def adjust_focus_for_well_action(self, row):
+        self.sigAdjustFocusPerWellClicked.emit(row)
 
     def adjust_focus_action(self, row):
         self.sigAdjustFocusClicked.emit(row)

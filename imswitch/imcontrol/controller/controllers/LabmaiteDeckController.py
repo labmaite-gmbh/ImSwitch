@@ -492,7 +492,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         deleted_point = self.scan_list.pop(row)
         self.exp_config.remove_pos_by_index(row)
         self.__logger.debug(f"Deleting row {row}: {deleted_point}")
-        self.update_beacons_index()
+        self.update_beacons_index(row)
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
         self._widget.ScanInfo.setHidden(False)
@@ -582,6 +582,36 @@ class LabmaiteDeckController(LiveUpdatedController):
             self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
         except Exception as e:
             self.__logger.warning(f"Invalid value to set focus. Please use '.' as comma. {e}")
+
+    def adjust_focus_for_well_in_list(self, row):
+        positioner = self.exp_context.device.stage
+        p = positioner.position()
+        _, _, z_new = p.as_tuple()
+        well = self.scan_list[row].well
+        slot = self.scan_list[row].slot
+
+        rows = self.get_beacons_rows_for_well(well, slot)
+        for r in rows:
+            if r == 0:
+                self.relative_focal_plane = z_new
+                self.propagate_relative_focus()
+            else:
+                if self.relative_focal_plane is None:
+                    self.relative_focal_plane = self.scan_list[0].position_z
+                self.scan_list[r].relative_focus_z = (z_new - self.relative_focal_plane)
+            self.scan_list[r].position_z = z_new
+            self.scan_list[r].point.z = p.z
+
+        self.update_list_in_widget()
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
+
+    def get_beacons_rows_for_well(self, well: str, slot: int):
+        rows = []
+        for i, scan_point in enumerate(self.scan_list):
+            if scan_point.well == well and scan_point.slot == slot:
+                rows.append(i)
+
+        return rows
 
     def adjust_focus_in_list(self, row):
         positioner = self.exp_context.device.stage
@@ -893,6 +923,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.scan_list.sigGoToTableClicked, self.go_to_position_in_list)
         self._connect(self._widget.scan_list.sigDeleteRowClicked, self.delete_position_in_list)
         self._connect(self._widget.scan_list.sigAdjustFocusClicked, self.adjust_focus_in_list)
+        self._connect(self._widget.scan_list.sigAdjustFocusPerWellClicked, self.adjust_focus_for_well_in_list)
         self._connect(self._widget.scan_list.sigAdjustPositionClicked, self.adjust_position_in_list)
         self._connect(self._widget.scan_list.sigDuplicatePositionClicked, self.duplicate_position_in_list)
         self._connect(self._widget.scan_list.sigRunAutofocusClicked, self.run_autofocus_in_list)
