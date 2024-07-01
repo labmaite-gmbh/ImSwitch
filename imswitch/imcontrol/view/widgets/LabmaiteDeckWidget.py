@@ -428,14 +428,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
             LEDWidget.valueChanged.connect(partial(self.light_intensity_change, ledName))
             # LED_selection_checkbox.checked.connect(partial(self.light_intensity_change, ledName))
-        self.LED_selection_combobox.currentIndexChanged.connect(self.on_combobox_changed)
+        self.LED_selection_combobox.currentIndexChanged.connect(self.on_lightsource_combobox_changed)
 
         illu_dialog.setLayout(led_layout)
         illu_dialog.show()
         illu_dialog.exec_()
 
-    def on_combobox_changed(self, index):
+    def on_lightsource_combobox_changed(self, index):
         print(f'Selected: {self.LED_selection_combobox.currentText()}. Index {index}')
+        self.light_intensity_change(self.LED_selection_combobox.currentText())
 
     def emit_open_signal(self):
         self.sigScanOpen.emit()
@@ -897,7 +898,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.scan_list)
         main_layout.addLayout(buttons_layout)
-        self.scan_list_widget.setMinimumHeight(350)
+        self.scan_list_widget.setMinimumHeight(300)
         self.scan_list_widget.setMaximumHeight(700)
 
         self.scan_list_widget.setLayout(main_layout)
@@ -1359,6 +1360,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigRunAutofocusClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
     sigRowChecked = QtCore.Signal(bool, int)
+    sigAdjustFocusPerWellClicked = QtCore.Signal(int)
 
     from locai_app.exp_control.scanning.scan_entities import ScanPoint
 
@@ -1478,6 +1480,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.getSignal(self, "sigDuplicatePositionClicked")) else None
             run_autofocus_action = menu.addAction("Run Autofocus") if self.isSignalConnected(
                 self.getSignal(self, "sigRunAutofocusClicked")) else None
+            adjust_focus_for_well_action = menu.addAction("Adjust Focus for Well") if self.isSignalConnected(
+                self.getSignal(self, "sigAdjustFocusPerWellClicked")) else None
             action = menu.exec_(self.mapToGlobal(event.pos()))
             if action == goto_action:
                 self.go_to_action(row)
@@ -1491,12 +1495,17 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
                 self.duplicate_position_action(row)
             elif action == run_autofocus_action:
                 self.run_autofocus(row)
+            elif action == adjust_focus_for_well_action:
+                self.adjust_focus_for_well_action(row)
 
     def go_to_action(self, row):
         self.sigGoToTableClicked.emit(row)
 
     def run_autofocus(self, row):
         self.sigRunAutofocusClicked.emit(row)
+
+    def adjust_focus_for_well_action(self, row):
+        self.sigAdjustFocusPerWellClicked.emit(row)
 
     def adjust_focus_action(self, row):
         self.sigAdjustFocusClicked.emit(row)
