@@ -166,8 +166,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         return menu_bar
 
     def open_autofocus_dialog(self):
-        autofocus_dialog = QDialog()
-        autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.autofocus_dialog = QDialog()
+        self.autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
 
         af_base, af_top, z_scan_step = self.get_af_values()
@@ -184,6 +184,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_step_widget = QtWidgets.QLineEdit(f"{z_scan_step}")
         self.af_step_widget.setMaximumWidth(60)
 
+        self.af_run_button = QPushButton("RUN")
+        self.af_stop_button = QPushButton("STOP")
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
+
         layout.addWidget(af_base_label, 0, 0, 1, 1)
         layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
         layout.addWidget(af_top_label, 1, 0, 1, 1)
@@ -198,13 +205,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_top_widget.textChanged.connect(self.calculate_autofocus)
         self.af_step_widget.textChanged.connect(self.calculate_autofocus)
 
-        self.af_run_button.clicked.connect(self.run_autofocus)
-        self.af_stop_button.clicked.connect(self.stop_autofocus)
-
         self.calculate_autofocus()
-        autofocus_dialog.setLayout(layout)
-        autofocus_dialog.show()
-        autofocus_dialog.exec_()
+        self.autofocus_dialog.setLayout(layout)
+        self.autofocus_dialog.show()
+        self.autofocus_dialog.exec_()
 
     def calculate_autofocus(self):
         self.af_base_value = float(self.af_base_widget.text())
@@ -669,10 +673,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
+
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
         self.af_run_button.setDisabled(False)
         self.af_stop_button.setDisabled(True)
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
 
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
@@ -1359,7 +1366,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigDuplicatePositionClicked = QtCore.Signal(int)
     sigRunAutofocusClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
-    sigRowChecked = QtCore.Signal(bool, int)
+    sigDoneChecked = QtCore.Signal(bool, int)
+    sigAutofocusChecked = QtCore.Signal(bool, int)
     sigAdjustFocusPerWellClicked = QtCore.Signal(int)
 
     from locai_app.exp_control.scanning.scan_entities import ScanPoint
@@ -1367,7 +1375,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.getSignal = getSignal
-        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute", "Done"]
+        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute", "Done", "Autofocus"]
         self.column_mapping = {
             "Slot": "slot",
             "Labware": "labware",
@@ -1376,9 +1384,10 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             "Offset": ("offset_from_center_x", "offset_from_center_y"),
             "Z_focus": "relative_focus_z",
             "Absolute": ("position_x", "position_y", "position_z"),
-            "Done": "checked"
+            "Done": "checked",
+            "Autofocus": "checked"
         }
-        default_hidden = [6]
+        default_hidden = [0, 6]
         self.mapping = {}
         self.set_header()
         self.scan_list_items = 0
@@ -1422,13 +1431,22 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         checkbox = QCheckBox()
         checkbox.setChecked(current_point.checked)
         checkbox.setMaximumSize(20, 20)
-        checkbox.stateChanged.connect(partial(self.row_checked, row_id))
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col=self.columns.index("Done")))
         self.setCellWidget(row_id, self.columns.index("Done"), checkbox)
         self.resizeColumnsToContents()
+        checkbox = QCheckBox()
+        checkbox.setChecked(current_point.checked)
+        checkbox.setMaximumSize(20, 20)
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col = self.columns.index("Autofocus")))
+        self.setCellWidget(row_id, self.columns.index("Autofocus"), checkbox)
+        self.resizeColumnsToContents()
 
-    def row_checked(self, row):
-        state = self.cellWidget(row, self.columns.index("Done")).isChecked()
-        self.sigRowChecked.emit(state, row)
+    def row_checked(self, row, col):
+        state = self.cellWidget(row, col).isChecked()
+        if col == self.columns.index("Done"):
+            self.sigDoneChecked.emit(state, row)
+        if col == self.columns.index("Autofocus"):
+            self.sigAutofocusChecked.emit(state, row)
 
     def onHorizontalHeaderClicked(self, point):
         # https://www.programcreek.com/python/?code=danigargu%2Fheap-viewer%2Fheap-viewer-master%2Fheap_viewer%2Fwidgets%2Fstructs.py
