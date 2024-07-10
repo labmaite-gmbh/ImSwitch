@@ -1380,7 +1380,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
             "Slot": "slot",
             "Labware": "labware",
             "Well": "well",
-            "Index": "position_in_well_index",
+            "Index": "index_well",
             "Offset": ("offset_from_center_x", "offset_from_center_y"),
             "Z_focus": "relative_focus_z",
             "Absolute": ("position_x", "position_y", "position_z"),
@@ -1419,7 +1419,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.set_item(row=row_id, col=self.columns.index("Slot"), item=current_point.slot)
         self.set_item(row=row_id, col=self.columns.index("Labware"), item=current_point.labware)
         self.set_item(row=row_id, col=self.columns.index("Well"), item=current_point.well)
-        self.set_item(row=row_id, col=self.columns.index("Index"), item=round(current_point.position_in_well_index))
+        self.set_item(row=row_id, col=self.columns.index("Index"), item=round(current_point.index_well))
         self.set_item(row=row_id, col=self.columns.index("Offset"),
                       item=(round(current_point.offset_from_center_x, 1),
                             round(current_point.offset_from_center_y, 1)))
