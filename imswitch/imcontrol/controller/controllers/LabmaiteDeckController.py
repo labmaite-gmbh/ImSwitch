@@ -431,6 +431,7 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def autofocus_checked_row(self, state, row):
         self.scan_list[row].autofocus = state
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def update_beacons_index(self, row=None):
         if row is None:
@@ -1242,6 +1243,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
+            self.save_autofocus_params()
             self.get_illumination_params()
         self.save_scan_list_to_json()
 
@@ -1262,6 +1264,10 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].position_y += y
             self.scan_list[row].position_z += z
             self.scan_list[row].point.z += z  # TODO: this one modifies the exp_config as intended.
+
+    def save_autofocus_params(self):
+        af_pos_index = [i for i, row in enumerate(self.scan_list) if row.autofocus]
+        self.exp_config.scan_params.autofocus_params.positions_index = af_pos_index
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices = self._widget.get_z_stack_values_in_um()

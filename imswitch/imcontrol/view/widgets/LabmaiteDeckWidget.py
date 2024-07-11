@@ -222,14 +222,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.sigAutofocusStop.emit()
 
     def open_plot_plate_3d_dialog(self):
-        plot_plate_3d_dialog = QDialog()
+        self.plot_plate_3d_dialog = QDialog()
         layout = QHBoxLayout()
         self.sigPlot3DPlate.emit()
 
     def open_slot_dialog(self):
-        slot_dialog = QDialog()
+        self.slot_dialog = QDialog()
         layout = QHBoxLayout()
-        slot_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.slot_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         self.slot_label = QtWidgets.QLabel("Slot: ")
         self.slot_label.setMinimumWidth(40)
@@ -246,16 +246,16 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.slots_combobox)
         self.slots_combobox.currentTextChanged.connect(self.slot_change)
 
-        slot_dialog.setLayout(layout)
-        slot_dialog.show()
-        slot_dialog.exec_()
+        self.slot_dialog.setLayout(layout)
+        self.slot_dialog.show()
+        self.slot_dialog.exec_()
 
     def slot_change(self):
         self.sigSlotChanged.emit(self.slots_combobox.text())
 
     def open_zstack_dialog(self):
-        zstack_dialog = QDialog()
-        zstack_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.zstack_dialog = QDialog()
+        self.zstack_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
         self.z_stack_checkbox_widget = QCheckBox('Depth/Separation [um]')
         self.z_stack_checkbox_widget.setCheckable(True)
@@ -289,13 +289,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_stack_slice_sep_value.textChanged.connect(self.calculate_z_stack)
         self.z_stack_slices_value.valueChanged.connect(self.calculate_z_stack)
 
-        zstack_dialog.setLayout(layout)
-        zstack_dialog.show()
-        zstack_dialog.exec_()
+        self.zstack_dialog.setLayout(layout)
+        self.zstack_dialog.show()
+        self.zstack_dialog.exec_()
 
     def open_offsets_dialog(self):
-        offsets_dialog = QDialog()
-        offsets_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.offsets_dialog = QDialog()
+        self.offsets_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         offset_buttons_layout = QtWidgets.QGridLayout()
         self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets:")
@@ -328,18 +328,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         offset_buttons_layout.addWidget(self.adjust_offset_button, *(3, 0, 1, 2))
 
         self.OffsetsWidgets.setLayout(offset_buttons_layout)
-        offsets_dialog.setLayout(offset_buttons_layout)
-        offsets_dialog.show()
-        offsets_dialog.exec_()
+        self.offsets_dialog.setLayout(offset_buttons_layout)
+        self.offsets_dialog.show()
+        self.offsets_dialog.exec_()
 
     def emit_offsets(self):
         x, y, z = self.get_offset_all()
         self.sigOffsetsSet.emit(x, y, z)
 
     def open_zscan_dialog(self):
-        zscan_dialog = QDialog()
-        zscan_dialog.setWhatsThis('About Z-Scan')  # TODO: fix, needs to click on sth to show
-        zscan_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.zscan_dialog = QDialog()
+        self.zscan_dialog.setWhatsThis('About Z-Scan')  # TODO: fix, needs to click on sth to show
+        self.zscan_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         layout = QtWidgets.QGridLayout()
         well_base, well_top, z_scan_step = self.get_zscan_values()
@@ -368,9 +368,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_scan_step_widget.textChanged.connect(self.calculate_z_scan)
 
         self.calculate_z_scan()
-        zscan_dialog.setLayout(layout)
-        zscan_dialog.show()
-        zscan_dialog.exec_()
+        self.zscan_dialog.setLayout(layout)
+        self.zscan_dialog.show()
+        self.zscan_dialog.exec_()
 
     def calculate_z_scan(self):
         self.well_base_value = float(self.well_base_widget.text())
@@ -384,8 +384,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         return self.af_base_value, self.af_top_value, self.af_step_value
 
     def open_illumination_dialog(self):
-        illu_dialog = QDialog()
-        illu_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.illu_dialog = QDialog()
+        self.illu_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         # LEDs grid
         self.LEDWidget = QtWidgets.QGroupBox("Lights: Not implemented yet.")
         self.LEDWidget.setMaximumWidth(110)
@@ -434,9 +434,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             # LED_selection_checkbox.checked.connect(partial(self.light_intensity_change, ledName))
         self.LED_selection_combobox.currentIndexChanged.connect(self.on_lightsource_combobox_changed)
 
-        illu_dialog.setLayout(led_layout)
-        illu_dialog.show()
-        illu_dialog.exec_()
+        self.illu_dialog.setLayout(led_layout)
+        self.illu_dialog.show()
+        self.illu_dialog.exec_()
 
     def on_lightsource_combobox_changed(self, index):
         print(f'Selected: {self.LED_selection_combobox.currentText()}. Index {index}')
@@ -1435,7 +1435,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         self.setCellWidget(row_id, self.columns.index("Done"), checkbox)
         self.resizeColumnsToContents()
         checkbox = QCheckBox()
-        checkbox.setChecked(current_point.checked)
+        checkbox.setChecked(current_point.autofocus)
         checkbox.setMaximumSize(20, 20)
         checkbox.stateChanged.connect(partial(self.row_checked, row_id, col = self.columns.index("Autofocus")))
         self.setCellWidget(row_id, self.columns.index("Autofocus"), checkbox)
