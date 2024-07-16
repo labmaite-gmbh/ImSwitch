@@ -170,19 +170,27 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
 
-        af_base, af_top, z_scan_step = self.get_af_values()
+        af_values = self.get_af_values()
 
         af_base_label = QtWidgets.QLabel("AF Start:")
-        self.af_base_widget = QtWidgets.QLineEdit(f"{af_base}")
+        self.af_base_widget = QtWidgets.QLineEdit(f"{af_values['z_start']}")
         self.af_base_widget.setMaximumWidth(60)
 
         af_top_label = QtWidgets.QLabel("AF End:")
-        self.af_top_widget = QtWidgets.QLineEdit(f"{af_top}")
+        self.af_top_widget = QtWidgets.QLineEdit(f"{af_values['z_end']}")
         self.af_top_widget.setMaximumWidth(60)
 
-        self.z_scan_step_label = QtWidgets.QLabel("Step:")
-        self.af_step_widget = QtWidgets.QLineEdit(f"{z_scan_step}")
+        af_depth_label = QtWidgets.QLabel("AF Depth:")
+        self.af_depth_widget = QtWidgets.QLineEdit(f"{af_values['z_depth']}")
+        self.af_depth_widget.setMaximumWidth(60)
+        self.af_depth_widget.setDisabled(True)
+
+        af_step_label = QtWidgets.QLabel("Step:")
+        self.af_step_widget = QtWidgets.QLineEdit(f"{af_values['z_step']}")
         self.af_step_widget.setMaximumWidth(60)
+
+        self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
+        self.af_checkbox_widget.setCheckable(True)
 
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
@@ -195,25 +203,109 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
         layout.addWidget(af_top_label, 1, 0, 1, 1)
         layout.addWidget(self.af_top_widget, 1, 1, 1, 1)
-        layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
+        layout.addWidget(af_step_label, 0, 2, 1, 1)
         layout.addWidget(self.af_step_widget, 0, 3, 1, 1)
+        layout.addWidget(af_depth_label, 2, 0, 1, 1)
+        layout.addWidget(self.af_depth_widget, 2, 1, 1, 1)
+        layout.addWidget(self.af_checkbox_widget, 2, 2, 1, 2)
         # af_run_button, af_stop_button in init_autofocus_widget.
-        layout.addWidget(self.af_run_button, 2, 0, 1, 2)
-        layout.addWidget(self.af_stop_button, 2, 2, 1, 2)
+        layout.addWidget(self.af_run_button, 3, 0, 1, 2)
+        layout.addWidget(self.af_stop_button, 3, 2, 1, 2)
 
+        self.af_checkbox_widget.stateChanged.connect(self.toggle_af_options)
         self.af_base_widget.textChanged.connect(self.calculate_autofocus)  # Connect valueChanged signal
         self.af_top_widget.textChanged.connect(self.calculate_autofocus)
         self.af_step_widget.textChanged.connect(self.calculate_autofocus)
+        # self.af_depth_widget.textChanged.connect(self.calculate_autofocus)
 
         self.calculate_autofocus()
         self.autofocus_dialog.setLayout(layout)
         self.autofocus_dialog.show()
         self.autofocus_dialog.exec_()
 
+    def get_af_values(self):
+        return {"z_start": self.af_base_value,
+                "z_end": self.af_top_value,
+                "z_step": self.af_step_value,
+                "z_depth": self.af_depth_value
+                }
+
+    def toggle_af_options(self):
+        if not bool(self.af_checkbox_widget.isChecked()):
+            self.af_depth_widget.setEnabled(False)
+            self.af_top_widget.setEnabled(True)
+            self.af_base_widget.setEnabled(True)
+            self.af_depth_widget.disconnect()
+            self._connect(self.af_top_widget.textChanged, self.calculate_autofocus)
+            self._connect(self.af_base_widget.textChanged, self.calculate_autofocus)
+        else:
+            self.af_depth_widget.setEnabled(True)
+            self.af_top_widget.setEnabled(False)
+            self.af_base_widget.setEnabled(False)
+            self._connect(self.af_depth_widget.textChanged, self.calculate_autofocus)
+            self.af_top_widget.disconnect()
+            self.af_base_widget.disconnect()
+        self.calculate_autofocus()
+        self.setLayout(self.main_grid_layout)
+
+    def _disconnect(self, element):
+        try:
+            element.disconnect()
+        except Exception as e:
+            pass
+
+    def _connect(self, element, method):
+        try:
+            element.disconnect()
+            self.__logger.info(f"Disconnecting element {element}")
+        except Exception as e:
+            # self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+            # raise e
+            pass
+        element.connect(method)
+
     def calculate_autofocus(self):
-        self.af_base_value = float(self.af_base_widget.text())
-        self.af_top_value = float(self.af_top_widget.text())
-        self.af_step_value = float(self.af_step_widget.text())
+        try:
+            if bool(self.af_checkbox_widget.isChecked()):
+                # use current z and z_depth to define top and bottom
+                self.af_depth_value = float(self.af_depth_widget.text())
+                self.af_step_value = float(self.af_step_widget.text())
+                self.af_center_value = self.getAbsPosition(self._positioner_widget.title(), "Z")
+
+                half_height = self.af_depth_value / 2.0
+                z_start = self.af_center_value - half_height
+                z_end = self.af_center_value + half_height
+
+                self.af_base_widget.setText(f'{z_start:.3f}')
+                self.af_top_widget.setText(f'{z_end:.3f}')
+
+                self.af_base_value = None
+                self.af_top_value = None
+
+                z_slices = abs(round((z_start - z_end) / self.af_step_value))
+                if z_slices < 1:
+                    z_slices = 1
+                    self.__logger.warning("Number of slices must be greater or equal than 1. Using 1 slice")
+
+            else:
+                # use current top and bottom to define current and depth
+                self.af_base_value = float(self.af_base_widget.text())
+                self.af_top_value = float(self.af_top_widget.text())
+                self.af_step_value = float(self.af_step_widget.text())
+
+                self.af_depth_widget.setText(f'{abs(self.af_top_value - self.af_base_value):.3f}')
+
+                self.af_depth_value = None
+                self.af_center_value = None
+
+                z_slices = abs(round((self.af_top_value - self.af_base_value) / self.af_step_value))
+                if z_slices < 1:
+                    raise ValueError("Number of slices must be greater or equal than 1")
+
+            self.ScanInfo.setText("Unsaved changes.")
+        except Exception as e:
+            self.__logger.warning(f"calculate_autofocus:  {e}")
+
 
     def run_autofocus(self):
         self.sigAutofocusRun.emit()
@@ -379,9 +471,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def get_zscan_values(self):
         return self.well_base_value, self.well_top_value, self.z_scan_step_value
-
-    def get_af_values(self):
-        return self.af_base_value, self.af_top_value, self.af_step_value
 
     def open_illumination_dialog(self):
         self.illu_dialog = QDialog()
@@ -627,6 +716,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_height = default_values_in_mm.z_height * 1000
         self.z_sep = default_values_in_mm.z_sep * 1000
         self.z_slices = default_values_in_mm.z_slices
+
+        self.z_stack_sample_depth_value = QLineEdit()
+        self.z_stack_sample_depth_value.setText(f"{self.z_height:.1f}" if self.z_height else str(1))
+
+        self.z_stack_slice_sep_value = QLineEdit()
+        self.z_stack_slice_sep_value.setText(f"{self.z_sep:.1f}" if self.z_sep else str(1))
+
+        self.z_stack_slices_value = QSpinBox()
+        self.z_stack_slices_value.setValue(self.z_slices)
+        self.z_stack_slices_value.setMinimum(1)
+        self.z_stack_slices_value.setMaximum(1000)
+
         self.calculate_z_stack()
 
     def calculate_z_stack(self):
@@ -670,9 +771,11 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
         self.af_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
         self.af_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
+        self.af_depth_value = abs(self.af_top_value - self.af_base_value)
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
+        self.af_depth_widget = QtWidgets.QLineEdit(f"{self.af_depth_value}")
 
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
@@ -1437,7 +1540,7 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         checkbox = QCheckBox()
         checkbox.setChecked(current_point.autofocus)
         checkbox.setMaximumSize(20, 20)
-        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col = self.columns.index("Autofocus")))
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col=self.columns.index("Autofocus")))
         self.setCellWidget(row_id, self.columns.index("Autofocus"), checkbox)
         self.resizeColumnsToContents()
 
