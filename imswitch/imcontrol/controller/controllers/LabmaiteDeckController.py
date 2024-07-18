@@ -543,7 +543,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         closest_well = positioner.deck_manager.get_closest_well(p)
         x_old, y_old, _ = positioner.deck_manager.get_well_position(str(self.scan_list[row].slot),
                                                                     self.scan_list[row].well).as_tuple()
-        _, _, z_old = self.scan_list[row].get_absolute_position()
+        _, _, z_old = self.scan_list[row].get_absolute_position_as_tuple()
         if closest_well != self.scan_list[row].well:
             self.__logger.warning(
                 f"Adjusting Position: can only adjust position within the same well ({self.scan_list[row].well}) -> new position is within well {closest_well}. ")
@@ -1042,7 +1042,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             top_right = closest_point(positions, (max_x, max_y))
             return [bottom_left, bottom_right, top_left, top_right]
 
-        all_positions = [p.get_absolute_position() for p in self.scan_list]
+        all_positions = [p.get_absolute_position_as_tuple() for p in self.scan_list]
         corners = get_corner_points(all_positions)
         ax = plt.subplot(111, projection='3d')
         ax.scatter([p[0] for p in all_positions],

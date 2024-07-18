@@ -192,13 +192,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
         self.af_checkbox_widget.setCheckable(True)
 
-        if not hasattr(self, "af_run_button") and not hasattr(self, "af_stop_button"):
-            self.af_run_button = QPushButton("RUN")
-            self.af_stop_button = QPushButton("STOP")
-            self.af_run_button.setDisabled(False)
-            self.af_stop_button.setDisabled(True)
-            self.af_run_button.clicked.connect(self.run_autofocus)
-            self.af_stop_button.clicked.connect(self.stop_autofocus)
+        # if not hasattr(self, "af_run_button") and not hasattr(self, "af_stop_button"):
+        self.af_run_button = QPushButton("RUN")
+        self.af_stop_button = QPushButton("STOP")
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
+
 
         layout.addWidget(af_base_label, 0, 0, 1, 1)
         layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
