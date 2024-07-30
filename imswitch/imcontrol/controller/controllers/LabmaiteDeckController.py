@@ -460,7 +460,24 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.update_scan_list(self.scan_list)
 
     def run_autofocus_in_list(self, row):
-        self.go_to_position_in_list(row)
+        # self.go_to_position_in_list(row)
+        positioner = self.exp_context.device.stage
+        well = self.scan_list[row].well
+        slot = self.scan_list[row].slot
+        focus_plane = self.scan_list[row].position_z
+        offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y,
+                       z=focus_plane)
+
+        def move_from_well_update():
+            positioner.move_from_well(str(slot), well, offset)
+            self.update_position(positioner)
+            self.select_labware(slot=str(slot))
+            self.select_well(well=well)
+            positioner.wait()
+
+        threading.Thread(target=move_from_well_update, daemon=True).start()
+        self.__logger.debug(
+            f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
 
         def set_autofocus_in_row(images, z_pos, scores, z_focus: float, position_task: ScanPoint):
             del self.preview_images
@@ -1014,6 +1031,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             p = self.exp_context.device.stage.position()
             self.autofocus.z_center = p.z
             self.exp_context.device.stage.move_absolute(p)
+            time.sleep(0.5)
         except Exception as e:
             self.__logger.warning(f"Position not valid for autofocus. {e}")
             return
@@ -1143,7 +1161,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
         # TODO: save focus
-        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})
+        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos}) # TODO: implement args to plot with more info
         try:
             positioner = self.exp_context.device.stage
             p = positioner.position()
