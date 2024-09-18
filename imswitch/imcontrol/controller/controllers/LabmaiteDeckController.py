@@ -306,16 +306,20 @@ class LabmaiteDeckController(LiveUpdatedController):
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
         deck_manager = self.exp_context.device.stage.deck_manager
         self.scan_list: List[ScanPoint] = []
+        first_group = None
+        first_position = None
         for slot in cfg.slots:
             slot_number = slot.slot_number
             labware_id = slot.labware_id
             for group_id, group in enumerate(slot.groups):
                 # First delete empty wells
+                if group.wells and first_group is None:
+                    first_group = group_id
                 wells_to_delete = [k for k, w in group.wells.items() if not w]
                 [group.wells.pop(w) for w in wells_to_delete]
                 for well_id, (well, positions) in enumerate(group.wells.items()):
-                    if well_id == 0 and group_id == 0:
-                        first_position = slot.groups[0].wells[well][0]  # First position in the well
+                    if well_id == 0 and first_group is not None and positions and first_position is None:
+                        first_position = slot.groups[first_group].wells[well][0]  # First position in the well
                     for idx, position in enumerate(positions):
                         if position:
                             well_position = deck_manager.get_well_position(str(slot_number), well)

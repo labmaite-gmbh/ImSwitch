@@ -579,20 +579,26 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self._wells_group_box = QtWidgets.QGroupBox(f"{self._labware_dict[self.current_slot]}")
         layout = QtWidgets.QGridLayout()
 
+        # Get the labware
         labware = self._labware_dict[self.current_slot]
         # Create dictionary to hold buttons
         self.wells = {}
         # Create grid layout for wells (buttons)
         well_buttons = {}
-        rows = len(self._labware_dict[self.current_slot].rows())
-        columns = len(self._labware_dict[self.current_slot].columns())
-        for r in list(range(rows)):
-            for c in list(range(columns)):
-                well_buttons[c + 1] = (0, c + 1)
-                well = labware.rows()[r][c]
+        # Get rows and columns from the labware
+        rows = labware.rows()
+        columns = labware.columns()
+        # Loop through each column, as columns can have different number of rows
+        for c, col in enumerate(columns):
+            # Get the number of rows for the current column
+            num_rows_in_col = len(col)
+            # Loop through the rows in the current column
+            for r in range(num_rows_in_col):
+                well = labware.columns()[c][r]  # Safely get the well in the current column
                 well_buttons[well.well_name] = (r + 1, c + 1)
-            well_buttons[well.well_name[0]] = (r + 1, 0)
+        # Handle empty case
         well_buttons[""] = (0, 0)
+
         # Create wells (buttons) and add them to the grid layout
         for corrds, pos in well_buttons.items():
             if 0 in pos:
