@@ -1119,7 +1119,9 @@ class InitializationWizard(QObject):
         load_dotenv()
         data = {}
         try:
-            with open(os.getenv("JSON_CONFIG_PATH"), "r") as file:
+            json_path = os.getenv('JSON_CONFIG_PATH').replace("\r", "\\r")
+            os.environ['JSON_CONFIG_PATH'] = json_path
+            with open(json_path, "r") as file:
                 data = json.load(file)
                 self.widget.load_default_values(data)
         except FileNotFoundError:

@@ -336,7 +336,8 @@ class LabmaiteDeckController(LiveUpdatedController):
                                 offset_from_center_x=position.x,
                                 offset_from_center_y=position.y,
                                 relative_focus_z=relative_focus_z,
-                                checked=False
+                                checked=False,
+                                mux_channel=group.mux_channel
                             )
                             self.scan_list.append(scanpoint)
                         else:
