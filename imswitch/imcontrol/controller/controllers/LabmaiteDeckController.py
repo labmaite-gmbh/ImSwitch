@@ -172,7 +172,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckController")
         start = time.time()
         self.exp_config = self.load_experiment_config_from_json(os.environ['EXPERIMENT_JSON_PATH'])
-        dev = self.init_device(home_on_start=True)
+        dev = self.init_device(home_on_start=False)
         self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                              callback_info=self.update_scan_info)
         self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
@@ -977,6 +977,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         # imagers = create_imagers(exp)
         # imager = get_imager(self.autofocus.imager, imagers)
         imager = get_autofocus_imager(exp)
+        if imager is None:
+            return
         self.autofocus.execute_autofocus(imager, self.exp_context.device)
         self._widget.af_run_button.setDisabled(True)
         self._widget.af_stop_button.setDisabled(False)
