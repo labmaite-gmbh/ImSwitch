@@ -4,6 +4,8 @@ import os
 import threading
 import time
 from copy import deepcopy
+
+import loguru
 import numpy as np
 from matplotlib import pyplot as plt
 from qtpy import QtCore
@@ -141,9 +143,16 @@ class CameraWrapper(Camera):
         super(CameraWrapper, self).__init__()
         self.camera = camera
         self.metadata = {"frame_rate": self.camera.getParameter("frame_rate"),
-                         "exposure_time": self.camera.getParameter("exposure") / 1000,
-                         "black_level": self.camera.getParameter("blacklevel"),
+                         "exposure": self.camera.getParameter("exposure") / 1000,
+                         "blacklevel": self.camera.getParameter("blacklevel"),
                          "gain": self.camera.getParameter("gain")}
+
+    def set_parameters(self, camera_params: dict):
+        for param, value in camera_params.items():
+            try:
+                self.camera.setParameter(param, value)
+            except Exception as e:
+                loguru.logger.warning(f"Parameter {param} not valid - selected value {value}. {e}")
 
     def get_metadata(self):
         return {"timestamp": datetime.datetime.now().strftime('%Y%m%d_%H%M%S'), "camera_metadata": self.metadata}
