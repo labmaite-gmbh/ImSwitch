@@ -1,25 +1,22 @@
 import json
 import os
-import sys
 import time
+from functools import partial
 from typing import Optional
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QCheckBox, QMessageBox, QFileDialog, QHBoxLayout, QRadioButton, QDialog, \
+from PyQt5.QtWidgets import QMessageBox, QFileDialog, QHBoxLayout, QDialog, \
     QGridLayout, \
-    QComboBox, QFrame, QMainWindow, QAction, QMenuBar, QTabWidget, QSpinBox
+    QComboBox, QAction, QMenuBar, QTabWidget, QSpinBox
+from config.config_definitions import ZStackParameters, ZScanParameters
 from dotenv import load_dotenv
+from locai_app.exp_control.experiment_context import ExperimentModules
+from locai_app.impl.deck.sd_deck_manager import DeckManager
+from qtpy import QtCore, QtWidgets
 
 from imswitch.imcommon.model import initLogger
 from imswitch.imcontrol.view import guitools as guitools
-from qtpy import QtCore, QtWidgets, QtGui
-from functools import partial
-
-from .basewidgets import Widget, NapariHybridWidget
-
-from locai_app.impl.deck.sd_deck_manager import DeckManager
-from locai_app.exp_control.experiment_context import ExperimentModules
-from config.config_definitions import ZStackParameters, ZScanParameters
+from .basewidgets import NapariHybridWidget
 
 
 class LabmaiteDeckWidget(NapariHybridWidget):
@@ -166,50 +163,148 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         return menu_bar
 
     def open_autofocus_dialog(self):
-        autofocus_dialog = QDialog()
-        autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.autofocus_dialog = QDialog()
+        self.autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
 
-        af_base, af_top, z_scan_step = self.get_af_values()
+        af_values = self.get_af_values()
 
         af_base_label = QtWidgets.QLabel("AF Start:")
-        self.af_base_widget = QtWidgets.QLineEdit(f"{af_base}")
+        self.af_base_widget = QtWidgets.QLineEdit(f"{af_values['z_start']}")
         self.af_base_widget.setMaximumWidth(60)
 
         af_top_label = QtWidgets.QLabel("AF End:")
-        self.af_top_widget = QtWidgets.QLineEdit(f"{af_top}")
+        self.af_top_widget = QtWidgets.QLineEdit(f"{af_values['z_end']}")
         self.af_top_widget.setMaximumWidth(60)
 
-        self.z_scan_step_label = QtWidgets.QLabel("Step:")
-        self.af_step_widget = QtWidgets.QLineEdit(f"{z_scan_step}")
+        af_depth_label = QtWidgets.QLabel("AF Depth:")
+        self.af_depth_widget = QtWidgets.QLineEdit(f"{af_values['z_depth']}")
+        self.af_depth_widget.setMaximumWidth(60)
+        self.af_depth_widget.setDisabled(True)
+
+        af_step_label = QtWidgets.QLabel("Step:")
+        self.af_step_widget = QtWidgets.QLineEdit(f"{af_values['z_step']}")
         self.af_step_widget.setMaximumWidth(60)
+
+        self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
+        self.af_checkbox_widget.setCheckable(True)
+
+        # if not hasattr(self, "af_run_button") and not hasattr(self, "af_stop_button"):
+        self.af_run_button = QPushButton("RUN")
+        self.af_stop_button = QPushButton("STOP")
+        self.af_run_button.setDisabled(False)
+        self.af_stop_button.setDisabled(True)
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
+
 
         layout.addWidget(af_base_label, 0, 0, 1, 1)
         layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
         layout.addWidget(af_top_label, 1, 0, 1, 1)
         layout.addWidget(self.af_top_widget, 1, 1, 1, 1)
-        layout.addWidget(self.z_scan_step_label, 0, 2, 1, 1)
+        layout.addWidget(af_step_label, 0, 2, 1, 1)
         layout.addWidget(self.af_step_widget, 0, 3, 1, 1)
+        layout.addWidget(af_depth_label, 2, 0, 1, 1)
+        layout.addWidget(self.af_depth_widget, 2, 1, 1, 1)
+        layout.addWidget(self.af_checkbox_widget, 2, 2, 1, 2)
         # af_run_button, af_stop_button in init_autofocus_widget.
-        layout.addWidget(self.af_run_button, 2, 0, 1, 2)
-        layout.addWidget(self.af_stop_button, 2, 2, 1, 2)
+        layout.addWidget(self.af_run_button, 3, 0, 1, 2)
+        layout.addWidget(self.af_stop_button, 3, 2, 1, 2)
 
+        self.af_checkbox_widget.stateChanged.connect(self.toggle_af_options)
         self.af_base_widget.textChanged.connect(self.calculate_autofocus)  # Connect valueChanged signal
         self.af_top_widget.textChanged.connect(self.calculate_autofocus)
         self.af_step_widget.textChanged.connect(self.calculate_autofocus)
-
-        self.af_run_button.clicked.connect(self.run_autofocus)
-        self.af_stop_button.clicked.connect(self.stop_autofocus)
+        # self.af_depth_widget.textChanged.connect(self.calculate_autofocus)
 
         self.calculate_autofocus()
-        autofocus_dialog.setLayout(layout)
-        autofocus_dialog.show()
-        autofocus_dialog.exec_()
+        self.autofocus_dialog.setLayout(layout)
+        self.autofocus_dialog.show()
+        self.autofocus_dialog.exec_()
+
+    def get_af_values(self):
+        return {"z_start": self.af_base_value,
+                "z_end": self.af_top_value,
+                "z_step": self.af_step_value,
+                "z_depth": self.af_depth_value
+                }
+
+    def toggle_af_options(self):
+        if not bool(self.af_checkbox_widget.isChecked()):
+            self.af_depth_widget.setEnabled(False)
+            self.af_top_widget.setEnabled(True)
+            self.af_base_widget.setEnabled(True)
+            self.af_depth_widget.disconnect()
+            self._connect(self.af_top_widget.textChanged, self.calculate_autofocus)
+            self._connect(self.af_base_widget.textChanged, self.calculate_autofocus)
+        else:
+            self.af_depth_widget.setEnabled(True)
+            self.af_top_widget.setEnabled(False)
+            self.af_base_widget.setEnabled(False)
+            self._connect(self.af_depth_widget.textChanged, self.calculate_autofocus)
+            self.af_top_widget.disconnect()
+            self.af_base_widget.disconnect()
+        self.calculate_autofocus()
+        self.setLayout(self.main_grid_layout)
+
+    def _disconnect(self, element):
+        try:
+            element.disconnect()
+        except Exception as e:
+            pass
+
+    def _connect(self, element, method):
+        try:
+            element.disconnect()
+            self.__logger.info(f"Disconnecting element {element}")
+        except Exception as e:
+            # self.__logger.warning(f"Ignoring warning when disconnecting element. {e}")
+            # raise e
+            pass
+        element.connect(method)
 
     def calculate_autofocus(self):
-        self.af_base_value = float(self.af_base_widget.text())
-        self.af_top_value = float(self.af_top_widget.text())
-        self.af_step_value = float(self.af_step_widget.text())
+        try:
+            if bool(self.af_checkbox_widget.isChecked()):
+                # use current z and z_depth to define top and bottom
+                self.af_depth_value = float(self.af_depth_widget.text())
+                self.af_step_value = float(self.af_step_widget.text())
+                self.af_center_value = self.getAbsPosition(self._positioner_widget.title(), "Z")
+
+                half_height = self.af_depth_value / 2.0
+                z_start = self.af_center_value - half_height
+                z_end = self.af_center_value + half_height
+
+                self.af_base_widget.setText(f'{z_start:.3f}')
+                self.af_top_widget.setText(f'{z_end:.3f}')
+
+                self.af_base_value = None
+                self.af_top_value = None
+
+                z_slices = abs(round((z_start - z_end) / self.af_step_value))
+                if z_slices < 1:
+                    z_slices = 1
+                    self.__logger.warning("Number of slices must be greater or equal than 1. Using 1 slice")
+
+            else:
+                # use current top and bottom to define current and depth
+                self.af_base_value = float(self.af_base_widget.text())
+                self.af_top_value = float(self.af_top_widget.text())
+                self.af_step_value = float(self.af_step_widget.text())
+
+                self.af_depth_widget.setText(f'{abs(self.af_top_value - self.af_base_value):.3f}')
+
+                self.af_depth_value = None
+                self.af_center_value = None
+
+                z_slices = abs(round((self.af_top_value - self.af_base_value) / self.af_step_value))
+                if z_slices < 1:
+                    raise ValueError("Number of slices must be greater or equal than 1")
+
+            self.ScanInfo.setText("Unsaved changes.")
+        except Exception as e:
+            self.__logger.warning(f"calculate_autofocus:  {e}")
+
 
     def run_autofocus(self):
         self.sigAutofocusRun.emit()
@@ -218,14 +313,14 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.sigAutofocusStop.emit()
 
     def open_plot_plate_3d_dialog(self):
-        plot_plate_3d_dialog = QDialog()
+        self.plot_plate_3d_dialog = QDialog()
         layout = QHBoxLayout()
         self.sigPlot3DPlate.emit()
 
     def open_slot_dialog(self):
-        slot_dialog = QDialog()
+        self.slot_dialog = QDialog()
         layout = QHBoxLayout()
-        slot_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.slot_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         self.slot_label = QtWidgets.QLabel("Slot: ")
         self.slot_label.setMinimumWidth(40)
@@ -242,16 +337,16 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.slots_combobox)
         self.slots_combobox.currentTextChanged.connect(self.slot_change)
 
-        slot_dialog.setLayout(layout)
-        slot_dialog.show()
-        slot_dialog.exec_()
+        self.slot_dialog.setLayout(layout)
+        self.slot_dialog.show()
+        self.slot_dialog.exec_()
 
     def slot_change(self):
         self.sigSlotChanged.emit(self.slots_combobox.text())
 
     def open_zstack_dialog(self):
-        zstack_dialog = QDialog()
-        zstack_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.zstack_dialog = QDialog()
+        self.zstack_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
         self.z_stack_checkbox_widget = QCheckBox('Depth/Separation [um]')
         self.z_stack_checkbox_widget.setCheckable(True)
@@ -285,13 +380,13 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_stack_slice_sep_value.textChanged.connect(self.calculate_z_stack)
         self.z_stack_slices_value.valueChanged.connect(self.calculate_z_stack)
 
-        zstack_dialog.setLayout(layout)
-        zstack_dialog.show()
-        zstack_dialog.exec_()
+        self.zstack_dialog.setLayout(layout)
+        self.zstack_dialog.show()
+        self.zstack_dialog.exec_()
 
     def open_offsets_dialog(self):
-        offsets_dialog = QDialog()
-        offsets_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.offsets_dialog = QDialog()
+        self.offsets_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         offset_buttons_layout = QtWidgets.QGridLayout()
         self.OffsetsWidgets = QtWidgets.QGroupBox("Offsets:")
@@ -324,18 +419,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         offset_buttons_layout.addWidget(self.adjust_offset_button, *(3, 0, 1, 2))
 
         self.OffsetsWidgets.setLayout(offset_buttons_layout)
-        offsets_dialog.setLayout(offset_buttons_layout)
-        offsets_dialog.show()
-        offsets_dialog.exec_()
+        self.offsets_dialog.setLayout(offset_buttons_layout)
+        self.offsets_dialog.show()
+        self.offsets_dialog.exec_()
 
     def emit_offsets(self):
         x, y, z = self.get_offset_all()
         self.sigOffsetsSet.emit(x, y, z)
 
     def open_zscan_dialog(self):
-        zscan_dialog = QDialog()
-        zscan_dialog.setWhatsThis('About Z-Scan')  # TODO: fix, needs to click on sth to show
-        zscan_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.zscan_dialog = QDialog()
+        self.zscan_dialog.setWhatsThis('About Z-Scan')  # TODO: fix, needs to click on sth to show
+        self.zscan_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         layout = QtWidgets.QGridLayout()
         well_base, well_top, z_scan_step = self.get_zscan_values()
@@ -364,9 +459,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_scan_step_widget.textChanged.connect(self.calculate_z_scan)
 
         self.calculate_z_scan()
-        zscan_dialog.setLayout(layout)
-        zscan_dialog.show()
-        zscan_dialog.exec_()
+        self.zscan_dialog.setLayout(layout)
+        self.zscan_dialog.show()
+        self.zscan_dialog.exec_()
 
     def calculate_z_scan(self):
         self.well_base_value = float(self.well_base_widget.text())
@@ -376,12 +471,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     def get_zscan_values(self):
         return self.well_base_value, self.well_top_value, self.z_scan_step_value
 
-    def get_af_values(self):
-        return self.af_base_value, self.af_top_value, self.af_step_value
-
     def open_illumination_dialog(self):
-        illu_dialog = QDialog()
-        illu_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.illu_dialog = QDialog()
+        self.illu_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         # LEDs grid
         self.LEDWidget = QtWidgets.QGroupBox("Lights: Not implemented yet.")
         self.LEDWidget.setMaximumWidth(110)
@@ -430,9 +522,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             # LED_selection_checkbox.checked.connect(partial(self.light_intensity_change, ledName))
         self.LED_selection_combobox.currentIndexChanged.connect(self.on_lightsource_combobox_changed)
 
-        illu_dialog.setLayout(led_layout)
-        illu_dialog.show()
-        illu_dialog.exec_()
+        self.illu_dialog.setLayout(led_layout)
+        self.illu_dialog.show()
+        self.illu_dialog.exec_()
 
     def on_lightsource_combobox_changed(self, index):
         print(f'Selected: {self.LED_selection_combobox.currentText()}. Index {index}')
@@ -585,20 +677,15 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.wells = {}
         # Create grid layout for wells (buttons)
         well_buttons = {}
-        # Get rows and columns from the labware
-        rows = labware.rows()
-        columns = labware.columns()
-        # Loop through each column, as columns can have different number of rows
-        for c, col in enumerate(columns):
-            # Get the number of rows for the current column
-            num_rows_in_col = len(col)
-            # Loop through the rows in the current column
-            for r in range(num_rows_in_col):
-                well = labware.columns()[c][r]  # Safely get the well in the current column
+        rows = len(self._labware_dict[self.current_slot].rows())
+        columns = len(self._labware_dict[self.current_slot].columns())
+        for r in list(range(rows)):
+            for c in list(range(columns)):
+                well_buttons[c + 1] = (0, c + 1)
+                well = labware.rows()[r][c]
                 well_buttons[well.well_name] = (r + 1, c + 1)
-        # Handle empty case
+            well_buttons[well.well_name[0]] = (r + 1, 0)
         well_buttons[""] = (0, 0)
-
         # Create wells (buttons) and add them to the grid layout
         for corrds, pos in well_buttons.items():
             if 0 in pos:
@@ -629,6 +716,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.z_height = default_values_in_mm.z_height * 1000
         self.z_sep = default_values_in_mm.z_sep * 1000
         self.z_slices = default_values_in_mm.z_slices
+
+        self.z_stack_sample_depth_value = QLineEdit()
+        self.z_stack_sample_depth_value.setText(f"{self.z_height:.1f}" if self.z_height else str(1))
+
+        self.z_stack_slice_sep_value = QLineEdit()
+        self.z_stack_slice_sep_value.setText(f"{self.z_sep:.1f}" if self.z_sep else str(1))
+
+        self.z_stack_slices_value = QSpinBox()
+        self.z_stack_slices_value.setValue(self.z_slices)
+        self.z_stack_slices_value.setMinimum(1)
+        self.z_stack_slices_value.setMaximum(1000)
+
         self.calculate_z_stack()
 
     def calculate_z_stack(self):
@@ -672,13 +771,18 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
         self.af_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
         self.af_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
+        self.af_depth_value = abs(self.af_top_value - self.af_base_value)
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
+        self.af_depth_widget = QtWidgets.QLineEdit(f"{self.af_depth_value}")
+
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
         self.af_run_button.setDisabled(False)
         self.af_stop_button.setDisabled(True)
+        self.af_run_button.clicked.connect(self.run_autofocus)
+        self.af_stop_button.clicked.connect(self.stop_autofocus)
 
     def init_z_scan_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
         self.well_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
@@ -1025,7 +1129,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
 
 from PyQt5.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QStyle, QCheckBox
-from PyQt5.QtGui import QPainter, QColor
+from PyQt5.QtGui import QColor
 
 
 class MyDelegate(QStyledItemDelegate):
@@ -1058,7 +1162,7 @@ class MyDelegate(QStyledItemDelegate):
                              QColor(selected_color.red(), selected_color.green(), selected_color.blue(), 50))
 
 
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton
 from PyQt5.QtCore import QObject, pyqtSignal
 
 
@@ -1367,7 +1471,8 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     sigDuplicatePositionClicked = QtCore.Signal(int)
     sigRunAutofocusClicked = QtCore.Signal(int)
     sigSelectedDragRows = QtCore.Signal(list, int)  # list of selected rows, position to drag to.
-    sigRowChecked = QtCore.Signal(bool, int)
+    sigDoneChecked = QtCore.Signal(bool, int)
+    sigAutofocusChecked = QtCore.Signal(bool, int)
     sigAdjustFocusPerWellClicked = QtCore.Signal(int)
 
     from locai_app.exp_control.scanning.scan_entities import ScanPoint
@@ -1375,18 +1480,19 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.getSignal = getSignal
-        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute", "Done"]
+        self.columns = ["Slot", "Labware", "Well", "Index", "Offset", "Z_focus", "Absolute", "Done", "Autofocus"]
         self.column_mapping = {
             "Slot": "slot",
             "Labware": "labware",
             "Well": "well",
-            "Index": "position_in_well_index",
+            "Index": "index_well",
             "Offset": ("offset_from_center_x", "offset_from_center_y"),
             "Z_focus": "relative_focus_z",
             "Absolute": ("position_x", "position_y", "position_z"),
-            "Done": "checked"
+            "Done": "checked",
+            "Autofocus": "checked"
         }
-        default_hidden = [6]
+        default_hidden = [0, 6]
         self.mapping = {}
         self.set_header()
         self.scan_list_items = 0
@@ -1430,13 +1536,22 @@ class TableWidgetDragRows(QtWidgets.QTableWidget):
         checkbox = QCheckBox()
         checkbox.setChecked(current_point.checked)
         checkbox.setMaximumSize(20, 20)
-        checkbox.stateChanged.connect(partial(self.row_checked, row_id))
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col=self.columns.index("Done")))
         self.setCellWidget(row_id, self.columns.index("Done"), checkbox)
         self.resizeColumnsToContents()
+        checkbox = QCheckBox()
+        checkbox.setChecked(current_point.autofocus)
+        checkbox.setMaximumSize(20, 20)
+        checkbox.stateChanged.connect(partial(self.row_checked, row_id, col=self.columns.index("Autofocus")))
+        self.setCellWidget(row_id, self.columns.index("Autofocus"), checkbox)
+        self.resizeColumnsToContents()
 
-    def row_checked(self, row):
-        state = self.cellWidget(row, self.columns.index("Done")).isChecked()
-        self.sigRowChecked.emit(state, row)
+    def row_checked(self, row, col):
+        state = self.cellWidget(row, col).isChecked()
+        if col == self.columns.index("Done"):
+            self.sigDoneChecked.emit(state, row)
+        if col == self.columns.index("Autofocus"):
+            self.sigAutofocusChecked.emit(state, row)
 
     def onHorizontalHeaderClicked(self, point):
         # https://www.programcreek.com/python/?code=danigargu%2Fheap-viewer%2Fheap-viewer-master%2Fheap_viewer%2Fwidgets%2Fstructs.py
