@@ -425,8 +425,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_z_scan_widget(
             default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
             options=(3, 2, 2, 1))
-        self._widget.init_autofocus_widget(
-            default_values_in_mm=ZScanParameters(well_base=4.0, well_top=5.5, z_scan_step=0.01))
+        af_params = self.exp_config.scan_params.autofocus_params
+        self._widget.init_autofocus_widget(default_af_params=af_params)
         self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
         self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
         self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
@@ -496,7 +496,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             del self.preview_images
             self.preview_images = get_array_from_list(images)
             self.preview_z_pos = z_pos
-            self.sigAutofocusDone.emit(scores, {"z_pos": z_pos}) # TODO: implement args to plot with more info
+            self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
             try:
                 positioner = self.exp_context.device.stage
                 p = positioner.position()
@@ -517,7 +517,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         del self.preview_images
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
-        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos}) # TODO: implement args to plot with more info
+        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
         try:
             positioner = self.exp_context.device.stage
             p = positioner.position()
@@ -1022,7 +1022,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
         af_params = exp.scan_params.autofocus_params
         af_values = self._widget.get_af_values()
-        if af_values["z_depth"] is not None:
+        if af_values.get("use_center", False):
             try:
                 p = self.exp_context.device.stage.position()
                 z_center = p.z
@@ -1036,7 +1036,7 @@ class LabmaiteDeckController(LiveUpdatedController):
                                    z_start=af_values["z_start"],
                                    z_end=af_values["z_end"],
                                    z_step=af_values["z_step"],
-                                   z_height=af_values["z_depth"],
+                                   z_depth=af_values["z_depth"],
                                    z_center=z_center,
                                    imager=af_params.imager,
                                    on_position_complete=on_position_complete)
@@ -1178,7 +1178,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
         # TODO: save focus
-        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos}) # TODO: implement args to plot with more info
+        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
         try:
             positioner = self.exp_context.device.stage
             p = positioner.position()
@@ -1296,7 +1296,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
-            self.save_autofocus_params()
+            # self.save_autofocus_params() # TODO: fix me
             self.get_illumination_params()
         self.save_scan_list_to_json()
 
@@ -1319,8 +1319,17 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].point.z += z  # TODO: this one modifies the exp_config as intended.
 
     def save_autofocus_params(self):
+        af_values = self._widget.get_af_values()
         af_pos_index = [i for i, row in enumerate(self.scan_list) if row.autofocus]
         self.exp_config.scan_params.autofocus_params.positions_index = af_pos_index
+        if self._widget.af_checkbox_widget.isChecked():
+            self.exp_config.scan_params.autofocus_params.z_start = None
+            self.exp_config.scan_params.autofocus_params.z_end = None
+            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
+        else:
+            self.exp_config.scan_params.autofocus_params.z_start = af_values["z_start"]
+            self.exp_config.scan_params.autofocus_params.z_end = af_values["z_end"]
+            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices = self._widget.get_z_stack_values_in_um()

@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import QMessageBox, QFileDialog, QHBoxLayout, QDialog, \
 from config.config_definitions import ZStackParameters, ZScanParameters
 from dotenv import load_dotenv
 from locai_app.exp_control.experiment_context import ExperimentModules
+from locai_app.exp_control.scanning.autofocus import AutofocusParameters
 from locai_app.impl.deck.sd_deck_manager import DeckManager
 from qtpy import QtCore, QtWidgets
 
@@ -167,6 +168,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.autofocus_dialog.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         layout = QGridLayout()
 
+        self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
+        self.af_checkbox_widget.setCheckable(True)
+
         af_values = self.get_af_values()
 
         af_base_label = QtWidgets.QLabel("AF Start:")
@@ -186,17 +190,16 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_step_widget = QtWidgets.QLineEdit(f"{af_values['z_step']}")
         self.af_step_widget.setMaximumWidth(60)
 
-        self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
-        self.af_checkbox_widget.setCheckable(True)
+        self.af_checkbox_widget.setChecked(af_values.get('use_center', False))
 
         # if not hasattr(self, "af_run_button") and not hasattr(self, "af_stop_button"):
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
         self.af_run_button.setDisabled(False)
         self.af_stop_button.setDisabled(True)
-        self.af_run_button.clicked.connect(self.run_autofocus)
-        self.af_stop_button.clicked.connect(self.stop_autofocus)
 
+        self._connect(self.af_run_button.clicked, self.run_autofocus)
+        self._connect(self.af_stop_button.clicked, self.stop_autofocus)
 
         layout.addWidget(af_base_label, 0, 0, 1, 1)
         layout.addWidget(self.af_base_widget, 0, 1, 1, 1)
@@ -211,22 +214,31 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.af_run_button, 3, 0, 1, 2)
         layout.addWidget(self.af_stop_button, 3, 2, 1, 2)
 
-        self.af_checkbox_widget.stateChanged.connect(self.toggle_af_options)
-        self.af_base_widget.textChanged.connect(self.calculate_autofocus)  # Connect valueChanged signal
-        self.af_top_widget.textChanged.connect(self.calculate_autofocus)
-        self.af_step_widget.textChanged.connect(self.calculate_autofocus)
-        # self.af_depth_widget.textChanged.connect(self.calculate_autofocus)
+        self._connect(self.af_checkbox_widget.stateChanged, self.toggle_af_options)
+        self._connect(self.af_base_widget.textChanged, self.calculate_autofocus)
+        self._connect(self.af_top_widget.textChanged, self.calculate_autofocus)
+        self._connect(self.af_step_widget.textChanged, self.calculate_autofocus)
 
+        self.toggle_af_options()
         self.calculate_autofocus()
         self.autofocus_dialog.setLayout(layout)
         self.autofocus_dialog.show()
         self.autofocus_dialog.exec_()
 
+    def disconnect_widgets(self):
+        '''
+        Disconnect all widgets from parent
+        '''
+        # Implement
+        ...
+
     def get_af_values(self):
         return {"z_start": self.af_base_value,
                 "z_end": self.af_top_value,
                 "z_step": self.af_step_value,
-                "z_depth": self.af_depth_value
+                "z_depth": self.af_depth_value,
+                "use_center": self.use_center,
+                "z_center": self.af_center_value
                 }
 
     def toggle_af_options(self):
@@ -246,6 +258,17 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.af_base_widget.disconnect()
         self.calculate_autofocus()
         self.setLayout(self.main_grid_layout)
+
+    def disconnect_children(self, parent):
+        """
+        Disconnect all signals from widgets in the autofocus dialog.
+        """
+        if not hasattr(self, parent) or not parent:
+            return
+
+        children = parent.findChildren(QObject)
+        for child in children:
+            self._disconnect(child)
 
     def _disconnect(self, element):
         try:
@@ -294,8 +317,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
                 self.af_depth_widget.setText(f'{abs(self.af_top_value - self.af_base_value):.3f}')
 
-                self.af_depth_value = None
-                self.af_center_value = None
+                self.af_depth_value = abs(self.af_top_value - self.af_base_value)
+                self.af_center_value = (self.af_top_value + self.af_base_value)/2
 
                 z_slices = abs(round((self.af_top_value - self.af_base_value) / self.af_step_value))
                 if z_slices < 1:
@@ -304,7 +327,6 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.ScanInfo.setText("Unsaved changes.")
         except Exception as e:
             self.__logger.warning(f"calculate_autofocus:  {e}")
-
 
     def run_autofocus(self):
         self.sigAutofocusRun.emit()
@@ -767,11 +789,20 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.z_stack_slice_sep_value.textChanged.disconnect(self.calculate_z_stack)
         self.setLayout(self.main_grid_layout)
 
-    def init_autofocus_widget(self, default_values_in_mm: Optional[ZScanParameters] = None, options=[(3, 3, 1, 2)]):
-        self.af_base_value = default_values_in_mm.well_base if default_values_in_mm is not None else 7.00
-        self.af_top_value = default_values_in_mm.well_top if default_values_in_mm is not None else 7.30
-        self.af_step_value = default_values_in_mm.z_scan_step if default_values_in_mm is not None else 0.025
-        self.af_depth_value = abs(self.af_top_value - self.af_base_value)
+    def init_autofocus_widget(self, default_af_params: AutofocusParameters, options=[(3, 3, 1, 2)]):
+        if default_af_params is None: # TODO: fix this
+            return
+        self.af_base_value = default_af_params.z_start
+        self.af_top_value = default_af_params.z_end
+        self.af_step_value = default_af_params.z_step
+        if self.af_base_value is not None and self.af_top_value is not None:
+            self.af_depth_value = abs(self.af_top_value - self.af_base_value)
+            self.af_center_value = (self.af_top_value + self.af_base_value)/2
+            self.use_center = False
+        else:
+            self.af_center_value = 0
+            self.af_depth_value = default_af_params.z_depth
+            self.use_center = True
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
