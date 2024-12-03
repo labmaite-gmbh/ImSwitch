@@ -791,7 +791,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
 
     def init_autofocus_widget(self, default_af_params: AutofocusParameters, options=[(3, 3, 1, 2)]):
         if default_af_params is None: # TODO: fix this
-            return
+            raise ValueError("default_af_params is None. Please configure the AF parameters in the experiment configuration file.")
         self.af_base_value = default_af_params.z_start
         self.af_top_value = default_af_params.z_end
         self.af_step_value = default_af_params.z_step

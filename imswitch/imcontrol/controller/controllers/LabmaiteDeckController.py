@@ -10,7 +10,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from qtpy import QtCore
 from functools import partial
-from typing import Union, List
+from typing import Union, List, Optional
 from dotenv import load_dotenv
 
 from imswitch.imcommon.model import initLogger, APIExport
@@ -138,6 +138,7 @@ MODULES = data['MODULES']
 class CameraWrapper(Camera):
     camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
+    compression: Optional[str] = None
 
     def __init__(self, camera: GXPIPYManager):
         super(CameraWrapper, self).__init__()
