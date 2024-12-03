@@ -1314,7 +1314,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
-            # self.save_autofocus_params() # TODO: fix me
+            self.save_autofocus_params() # TODO: fix me
             self.get_illumination_params()
         self.save_scan_list_to_json()
 
@@ -1337,17 +1337,22 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].point.z += z  # TODO: this one modifies the exp_config as intended.
 
     def save_autofocus_params(self):
-        af_values = self._widget.get_af_values()
-        af_pos_index = [i for i, row in enumerate(self.scan_list) if row.autofocus]
-        self.exp_config.scan_params.autofocus_params.positions_index = af_pos_index
-        if self._widget.af_checkbox_widget.isChecked():
-            self.exp_config.scan_params.autofocus_params.z_start = None
-            self.exp_config.scan_params.autofocus_params.z_end = None
-            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
-        else:
-            self.exp_config.scan_params.autofocus_params.z_start = af_values["z_start"]
-            self.exp_config.scan_params.autofocus_params.z_end = af_values["z_end"]
-            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
+        try:
+            af_values = self._widget.get_af_values()
+            af_pos_index = [i for i, row in enumerate(self.scan_list) if row.autofocus]
+            self.exp_config.scan_params.autofocus_params.positions_index = af_pos_index
+            self.exp_config.scan_params.autofocus_params.order = self._widget.af_order_widget.value()
+            self.exp_config.scan_params.autofocus_params.max_iterations = self._widget.af_max_iterations_widget.value()
+            if self._widget.af_checkbox_widget.isChecked():
+                self.exp_config.scan_params.autofocus_params.z_start = None
+                self.exp_config.scan_params.autofocus_params.z_end = None
+                self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
+            else:
+                self.exp_config.scan_params.autofocus_params.z_start = af_values["z_start"]
+                self.exp_config.scan_params.autofocus_params.z_end = af_values["z_end"]
+                self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
+        except Exception as e:
+            self.__logger.error(f"Can't save autofocus params. Error: {e}")
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices = self._widget.get_z_stack_values_in_um()

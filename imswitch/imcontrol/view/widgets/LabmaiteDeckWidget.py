@@ -198,6 +198,17 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.af_run_button.setDisabled(False)
         self.af_stop_button.setDisabled(True)
 
+        af_order_label = QtWidgets.QLabel("Order:")
+        self.af_order_widget = QtWidgets.QSpinBox()
+        self.af_order_widget.setValue(self.af_order if self.af_order is not None else 1)
+        self.af_order_widget.setMinimum(1)
+        self.af_order_widget.setMaximum(2)
+        af_max_iterations_label = QtWidgets.QLabel("Max. iter:")
+        self.af_max_iterations_widget = QtWidgets.QSpinBox()
+        self.af_max_iterations_widget.setValue(self.max_iterations if self.max_iterations is not None else 1)
+        self.af_max_iterations_widget.setMinimum(1)
+        self.af_max_iterations_widget.setMaximum(5)
+
         self._connect(self.af_run_button.clicked, self.run_autofocus)
         self._connect(self.af_stop_button.clicked, self.stop_autofocus)
 
@@ -207,6 +218,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         layout.addWidget(self.af_top_widget, 1, 1, 1, 1)
         layout.addWidget(af_step_label, 0, 2, 1, 1)
         layout.addWidget(self.af_step_widget, 0, 3, 1, 1)
+        layout.addWidget(af_order_label, 0, 4, 1, 1)
+        layout.addWidget(self.af_order_widget, 0, 5, 1, 1)
+        layout.addWidget(af_max_iterations_label, 1, 4, 1, 1)
+        layout.addWidget(self.af_max_iterations_widget, 1, 5, 1, 1)
         layout.addWidget(af_depth_label, 2, 0, 1, 1)
         layout.addWidget(self.af_depth_widget, 2, 1, 1, 1)
         layout.addWidget(self.af_checkbox_widget, 2, 2, 1, 2)
@@ -238,7 +253,9 @@ class LabmaiteDeckWidget(NapariHybridWidget):
                 "z_step": self.af_step_value,
                 "z_depth": self.af_depth_value,
                 "use_center": self.use_center,
-                "z_center": self.af_center_value
+                "z_center": self.af_center_value,
+                "order": self.af_order,
+                "max_iterations": self.max_iterations
                 }
 
     def toggle_af_options(self):
@@ -803,10 +820,25 @@ class LabmaiteDeckWidget(NapariHybridWidget):
             self.af_center_value = 0
             self.af_depth_value = default_af_params.z_depth
             self.use_center = True
+        self.af_order = default_af_params.order
+        self.max_iterations = default_af_params.max_iterations
+
+        self.af_checkbox_widget = QCheckBox('Depth/Separation [um]')
+        self.af_checkbox_widget.setCheckable(True)
+        self.af_checkbox_widget.setChecked(self.use_center)
         self.af_base_widget = QtWidgets.QLineEdit(f"{self.af_base_value}")
         self.af_top_widget = QtWidgets.QLineEdit(f"{self.af_top_value}")
         self.af_step_widget = QtWidgets.QLineEdit(f"{self.af_step_value}")
         self.af_depth_widget = QtWidgets.QLineEdit(f"{self.af_depth_value}")
+
+        self.af_order_widget = QtWidgets.QSpinBox()
+        self.af_order_widget.setValue(self.af_order if self.af_order is not None else 1)
+        self.af_order_widget.setMinimum(1)
+        self.af_order_widget.setMaximum(2)
+        self.af_max_iterations_widget = QtWidgets.QSpinBox()
+        self.af_max_iterations_widget.setValue(self.max_iterations if self.max_iterations is not None else 1)
+        self.af_max_iterations_widget.setMinimum(1)
+        self.af_max_iterations_widget.setMaximum(5)
 
         self.af_run_button = QPushButton("RUN")
         self.af_stop_button = QPushButton("STOP")
