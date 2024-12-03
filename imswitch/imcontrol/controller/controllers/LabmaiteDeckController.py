@@ -5,10 +5,12 @@ import threading
 import time
 from copy import deepcopy
 import numpy as np
+import typing_extensions
 from matplotlib import pyplot as plt
+from pydantic.parse import load_file
 from qtpy import QtCore
 from functools import partial
-from typing import Union, List
+from typing import Union, List, Optional, Dict
 from dotenv import load_dotenv
 
 from imswitch.imcommon.model import initLogger, APIExport
@@ -20,6 +22,7 @@ from imswitch.imcontrol.model.managers.detectors.GXPIPYManager import GXPIPYMana
 
 from config.config_definitions import ExperimentConfig, ZScanParameters
 from hardware_api.core.abcs import Camera
+from hardware_api.impl.gx.model_impl.gx_camera import CfgGxCamera
 from locai_app.generics import Point
 from locai_app.exp_control.common.shared_context import ScanState
 from locai_app.exp_control.scanning.scan_manager import get_array_from_list, Autofocus
@@ -136,6 +139,7 @@ MODULES = data['MODULES']
 class CameraWrapper(Camera):
     camera_: Union[MockCameraTIS, CameraGXIPY]
     camera: GXPIPYManager
+    compression: Optional[typing_extensions.Literal['LZW', 'zlib']] = None
 
     def __init__(self, camera: GXPIPYManager):
         super(CameraWrapper, self).__init__()
@@ -144,6 +148,15 @@ class CameraWrapper(Camera):
                          "exposure_time": self.camera.getParameter("exposure") / 1000,
                          "black_level": self.camera.getParameter("blacklevel"),
                          "gain": self.camera.getParameter("gain")}
+
+    def set_parameters(self, camera_params: CfgGxCamera):
+        # self.compression = camera_params.compression
+        self.camera.setParameter('exposure', camera_params.exposure_time)  # set exposure, should be in us
+        self.camera.setParameter('gain', camera_params.gain)
+        self.camera.setParameter('blacklevel', camera_params.black_level)
+        self.metadata['exposure_time'] = camera_params.compression
+        self.metadata['gain'] = camera_params.gain
+        self.metadata['black_level'] = camera_params.black_level
 
     def get_metadata(self):
         return {"timestamp": datetime.datetime.now().strftime('%Y%m%d_%H%M%S'), "camera_metadata": self.metadata}
@@ -172,7 +185,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.__logger = initLogger(self, instanceName="DeckController")
         start = time.time()
         self.exp_config = self.load_experiment_config_from_json(os.environ['EXPERIMENT_JSON_PATH'])
-        dev = self.init_device(home_on_start=True)
+        dev = self.init_device(home_on_start=False)
         self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                              callback_info=self.update_scan_info)
         self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
@@ -193,13 +206,16 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.sigSliderValueChanged, self.value_light_changed)
 
     def init_device(self, home_on_start=False):
+        cfg_raw = load_file(os.environ['DEVICE_JSON_PATH'])
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR":
             from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
-            cfg_device = CfgDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
+            # cfg_device = CfgDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
+            cfg_device = CfgDevice.parse_obj(cfg_raw)
             device: UC2Device = create_device(cfg_device)
         elif os.environ['DEVICE'] == "BTIG_A":
             from locai_app.impl.btig_a import create_device, BTIGDevice, CfgBTIGDevice
-            cfg_device = CfgBTIGDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
+            # cfg_device = CfgBTIGDevice.parse_file(os.environ['DEVICE_JSON_PATH'])
+            cfg_device = CfgBTIGDevice.parse_obj(cfg_raw)
             device: BTIGDevice = create_device(cfg_device)
         else:
             raise ValueError(f"Unrecognized device {os.environ['DEVICE']}")
@@ -208,6 +224,8 @@ class LabmaiteDeckController(LiveUpdatedController):
         start = time.time()
         imswitch_camera = self._master.detectorsManager._subManagers["WidefieldCamera"]
         camera = CameraWrapper(imswitch_camera)
+        cfg_gxcamera = CfgGxCamera.parse_obj(cfg_raw['components']['camera'])  # Using parse to validate
+        camera.set_parameters(camera_params=cfg_gxcamera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR" and home_on_start:
