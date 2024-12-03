@@ -4,6 +4,8 @@ import os
 import threading
 import time
 from copy import deepcopy
+
+import loguru
 import numpy as np
 import typing_extensions
 from matplotlib import pyplot as plt
@@ -158,6 +160,13 @@ class CameraWrapper(Camera):
         self.metadata['gain'] = camera_params.gain
         self.metadata['black_level'] = camera_params.black_level
 
+    def _set_parameters(self, camera_params: dict):
+        for param, value in camera_params.items():
+            try:
+                self.camera.setParameter(param, value)
+            except Exception as e:
+                loguru.logger.warning(f"Parameter {param} not valid - selected value {value}. {e}")
+
     def get_metadata(self):
         return {"timestamp": datetime.datetime.now().strftime('%Y%m%d_%H%M%S'), "camera_metadata": self.metadata}
 
@@ -178,7 +187,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     """ Linked to OpentronsDeckWidget.
     Safely moves around the OTDeck and saves positions to be scanned with OpentronsDeckScanner."""
     sigZScanDone = QtCore.Signal()
-    sigAutofocusDone = QtCore.Signal(list)
+    sigAutofocusDone = QtCore.Signal(list, dict)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -326,6 +335,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.scan_list: List[ScanPoint] = []
         first_group = None
         first_position = None
+        pos_index = 0
+        if cfg.scan_params.autofocus_params is not None:
+            af_indexes = cfg.scan_params.autofocus_params.positions_index
+        else:
+            af_indexes = []
         for slot in cfg.slots:
             slot_number = slot.slot_number
             labware_id = slot.labware_id
@@ -347,6 +361,7 @@ class LabmaiteDeckController(LiveUpdatedController):
                                 labware=labware_id,
                                 slot=slot_number,
                                 well=well,
+                                mux_channel=group.mux_channel,
                                 position_in_well_index=idx,
                                 position_x=well_position.x + position.x,
                                 position_y=well_position.y + position.y,
@@ -355,9 +370,10 @@ class LabmaiteDeckController(LiveUpdatedController):
                                 offset_from_center_y=position.y,
                                 relative_focus_z=relative_focus_z,
                                 checked=False,
-                                mux_channel=group.mux_channel
+                                autofocus=pos_index in af_indexes
                             )
                             self.scan_list.append(scanpoint)
+                            pos_index += 1
                         else:
                             self.__logger.warning(f"Ignoring empty position in well {well} ")
 
@@ -427,12 +443,13 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.init_z_scan_widget(
             default_values_in_mm=ZScanParameters(well_base=4.0, well_top=4.5, z_scan_step=0.01),
             options=(3, 2, 2, 1))
-        self._widget.init_autofocus_widget(
-            default_values_in_mm=ZScanParameters(well_base=4.0, well_top=5.5, z_scan_step=0.01))
+        af_params = self.exp_config.scan_params.autofocus_params
+        self._widget.init_autofocus_widget(default_af_params=af_params)
         self._widget.init_zstack_config_widget(default_values_in_mm=self.exp_config.scan_params.z_stack_params)
         self._connect(self._widget.z_scan_preview_button.clicked, self.z_scan_preview)
         self._connect(self._widget.z_scan_stop_button.clicked, self.z_scan_stop)
-        self._connect(self._widget.scan_list.sigRowChecked, self.checked_row)
+        self._connect(self._widget.scan_list.sigDoneChecked, self.done_checked_row)
+        self._connect(self._widget.scan_list.sigAutofocusChecked, self.autofocus_checked_row)
         try:
             self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Slot"), True)
             self._widget.scan_list.setColumnHidden(self._widget.scan_list.columns.index("Labware"), True)
@@ -440,8 +457,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         except ValueError as e:
             self.__logger.warning(f"Error when initializing LabmaiteDeckWidget's Scan List. Exception: {e} ")
 
-    def checked_row(self, state, row):
+    def done_checked_row(self, state, row):
         self.scan_list[row].checked = state
+
+    def autofocus_checked_row(self, state, row):
+        self.scan_list[row].autofocus = state
+        self._widget.sigScanInfoTextChanged.emit("Unsaved changes.")
 
     def update_beacons_index(self, row=None):
         if row is None:
@@ -470,13 +491,30 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.update_scan_list(self.scan_list)
 
     def run_autofocus_in_list(self, row):
-        self.go_to_position_in_list(row)
+        # self.go_to_position_in_list(row)
+        positioner = self.exp_context.device.stage
+        well = self.scan_list[row].well
+        slot = self.scan_list[row].slot
+        focus_plane = self.scan_list[row].position_z
+        offset = Point(x=self.scan_list[row].offset_from_center_x, y=self.scan_list[row].offset_from_center_y,
+                       z=focus_plane)
 
-        def set_autofocus_in_row(images, z_pos, scores, z_focus: float):
+        def move_from_well_update():
+            positioner.move_from_well(str(slot), well, offset)
+            self.update_position(positioner)
+            self.select_labware(slot=str(slot))
+            self.select_well(well=well)
+            positioner.wait()
+
+        threading.Thread(target=move_from_well_update, daemon=True).start()
+        self.__logger.debug(
+            f"Moving to position in row {row}: slot={str(slot)}, well={well}, offset={offset}, focus={focus_plane}")
+
+        def set_autofocus_in_row(images, z_pos, scores, z_focus: float, position_task: ScanPoint):
             del self.preview_images
             self.preview_images = get_array_from_list(images)
             self.preview_z_pos = z_pos
-            self.sigAutofocusDone.emit(scores)
+            self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
             try:
                 positioner = self.exp_context.device.stage
                 p = positioner.position()
@@ -491,7 +529,25 @@ class LabmaiteDeckController(LiveUpdatedController):
                 self.stop_autofocus()
                 self.__logger.warning(f"Didn't move to focus point. {e}")
 
-        self.run_autofocus(callback_finish=set_autofocus_in_row)
+        self.run_autofocus(on_position_complete=set_autofocus_in_row)
+
+    def set_autofocus_use_for_all(self, images, z_pos, scores, z_focus: float, position_task: ScanPoint):
+        del self.preview_images
+        self.preview_images = get_array_from_list(images)
+        self.preview_z_pos = z_pos
+        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
+        try:
+            positioner = self.exp_context.device.stage
+            p = positioner.position()
+            p_new = Point(x=p.x, y=p.y, z=z_focus)
+            self.move(p_new)
+            self.__logger.info(f"Moved to focus (AF), z = {z_focus} mm")
+            self.adjust_all_focus()
+            self.stop_autofocus()
+            self.__logger.info(f"Saved focus for all positions (AF), z = {z_focus} mm")
+        except Exception as e:
+            self.stop_autofocus()
+            self.__logger.warning(f"Didn't move to focus point. {e}")
 
     def go_to_position_in_list(self, row):
         positioner = self.exp_context.device.stage
@@ -535,7 +591,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         closest_well = positioner.deck_manager.get_closest_well(p)
         x_old, y_old, _ = positioner.deck_manager.get_well_position(str(self.scan_list[row].slot),
                                                                     self.scan_list[row].well).as_tuple()
-        _, _, z_old = self.scan_list[row].get_absolute_position()
+        _, _, z_old = self.scan_list[row].get_absolute_position_as_tuple()
         if closest_well != self.scan_list[row].well:
             self.__logger.warning(
                 f"Adjusting Position: can only adjust position within the same well ({self.scan_list[row].well}) -> new position is within well {closest_well}. ")
@@ -978,23 +1034,45 @@ class LabmaiteDeckController(LiveUpdatedController):
         except Exception as e:
             self.__logger.warning(f"No autofocus to stop. {e}")
 
-    def run_autofocus(self, callback_finish=None):
-        callback_finish = self._set_autofocus if callback_finish is None else callback_finish
+    def run_autofocus(self, on_position_complete=None):
+        on_position_complete = self._set_autofocus if on_position_complete is None else on_position_complete
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
         af_params = exp.scan_params.autofocus_params
-        z_end, z_start, z_step = self._widget.get_af_values()
-        self.autofocus = Autofocus(method=af_params.method, z_start=z_start, z_end=z_end,
-                                   z_step=z_step, imager=af_params.imager, callback_finish=callback_finish)
+        af_values = self._widget.get_af_values()
+        if af_values.get("use_center", False):
+            try:
+                p = self.exp_context.device.stage.position()
+                z_center = p.z
+            except Exception as e:
+                z_center = None
+                raise e
+        else:
+            z_center = None
+
+        self.autofocus = Autofocus(method=af_params.method,
+                                   z_start=af_values["z_start"],
+                                   z_end=af_values["z_end"],
+                                   z_step=af_values["z_step"],
+                                   z_depth=af_values["z_depth"],
+                                   z_center=z_center,
+                                   imager=af_params.imager,
+                                   on_position_complete=on_position_complete)
         try:
             p = self.exp_context.device.stage.position()
+            self.autofocus.z_center = p.z
+            time.sleep(0.1)
             self.exp_context.device.stage.move_absolute(p)
+            time.sleep(0.5)
         except Exception as e:
             self.__logger.warning(f"Position not valid for autofocus. {e}")
             return
         # imagers = create_imagers(exp)
         # imager = get_imager(self.autofocus.imager, imagers)
         imager = get_autofocus_imager(exp)
+        if imager is None:
+            self.__logger.warning(f"No imager configured for autofocus.")
+            return
         self.autofocus.execute_autofocus(imager, self.exp_context.device)
         self._widget.af_run_button.setDisabled(True)
         self._widget.af_stop_button.setDisabled(False)
@@ -1017,7 +1095,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             top_right = closest_point(positions, (max_x, max_y))
             return [bottom_left, bottom_right, top_left, top_right]
 
-        all_positions = [p.get_absolute_position() for p in self.scan_list]
+        all_positions = [p.get_absolute_position_as_tuple() for p in self.scan_list]
         corners = get_corner_points(all_positions)
         ax = plt.subplot(111, projection='3d')
         ax.scatter([p[0] for p in all_positions],
@@ -1113,12 +1191,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.preview_z_pos = z_pos
         self.sigZScanDone.emit()
 
-    def _set_autofocus(self, images, z_pos, scores, z_focus: float):
+    def _set_autofocus(self, images, z_pos, scores, z_focus: float, position_task):
         del self.preview_images
         self.preview_images = get_array_from_list(images)
         self.preview_z_pos = z_pos
         # TODO: save focus
-        self.sigAutofocusDone.emit(scores)
+        self.sigAutofocusDone.emit(scores, {"z_pos": z_pos})  # TODO: implement args to plot with more info
         try:
             positioner = self.exp_context.device.stage
             p = positioner.position()
@@ -1129,7 +1207,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.stop_autofocus()
             self.__logger.warning(f"Didn't move to focus point. {e}")
 
-    def set_autofocus_images(self, scores):
+    def set_autofocus_images(self, scores, args: dict = None):
         if len(self._widget.viewer.dims.events.current_step.callbacks) > 3:  # TODO: a bit hacky...
             self._widget.viewer.dims.events.current_step.disconnect(
                 self._widget.viewer.dims.events.current_step.callbacks[0])
@@ -1140,7 +1218,9 @@ class LabmaiteDeckController(LiveUpdatedController):
             partial(self._widget.update_slider, self.preview_z_pos, name))
         self._connect(self._widget.sigZScanValue, self.set_z_slice_value)
         self.stop_autofocus()
-        self.autofocus.plot_results(scores)
+        if args is None:
+            args = {"well": self.selected_well}
+        self.autofocus.plot_results(scores, args)
 
     def selected_row(self, row):
         self._widget.z_scan_zpos_label.setText(f"Adjust focus of row {row} to ")
@@ -1234,6 +1314,7 @@ class LabmaiteDeckController(LiveUpdatedController):
     def save_experiment_config(self):
         if os.environ["APP"] == ("BCALL" or "ICARUS"):
             self.save_zstack_params()
+            # self.save_autofocus_params() # TODO: fix me
             self.get_illumination_params()
         self.save_scan_list_to_json()
 
@@ -1254,6 +1335,19 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.scan_list[row].position_y += y
             self.scan_list[row].position_z += z
             self.scan_list[row].point.z += z  # TODO: this one modifies the exp_config as intended.
+
+    def save_autofocus_params(self):
+        af_values = self._widget.get_af_values()
+        af_pos_index = [i for i, row in enumerate(self.scan_list) if row.autofocus]
+        self.exp_config.scan_params.autofocus_params.positions_index = af_pos_index
+        if self._widget.af_checkbox_widget.isChecked():
+            self.exp_config.scan_params.autofocus_params.z_start = None
+            self.exp_config.scan_params.autofocus_params.z_end = None
+            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
+        else:
+            self.exp_config.scan_params.autofocus_params.z_start = af_values["z_start"]
+            self.exp_config.scan_params.autofocus_params.z_end = af_values["z_end"]
+            self.exp_config.scan_params.autofocus_params.z_step = af_values["z_step"]
 
     def save_zstack_params(self):
         z_height, z_sep, z_slices = self._widget.get_z_stack_values_in_um()
