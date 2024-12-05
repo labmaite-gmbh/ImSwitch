@@ -156,7 +156,8 @@ class CameraWrapper(Camera):
         self.camera.setParameter('exposure', camera_params.exposure_time)  # set exposure, should be in us
         self.camera.setParameter('gain', camera_params.gain)
         self.camera.setParameter('blacklevel', camera_params.black_level)
-        self.metadata['exposure_time'] = camera_params.compression
+        self.compression = camera_params.compression
+        self.metadata['compression'] = camera_params.compression
         self.metadata['gain'] = camera_params.gain
         self.metadata['black_level'] = camera_params.black_level
 
@@ -232,8 +233,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         device.load_labwares(self.exp_config.slots)
         start = time.time()
         imswitch_camera = self._master.detectorsManager._subManagers["WidefieldCamera"]
-        camera = CameraWrapper(imswitch_camera)
+
         cfg_gxcamera = CfgGxCamera.parse_obj(cfg_raw['components']['camera'])  # Using parse to validate
+        camera = CameraWrapper(imswitch_camera)
         camera.set_parameters(camera_params=cfg_gxcamera)
         device.attach_camera(camera)
         print(f"init camera {time.time() - start:.3f} seconds")
