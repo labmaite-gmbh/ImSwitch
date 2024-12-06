@@ -156,8 +156,9 @@ class CameraWrapper(Camera):
         self.camera.setParameter('exposure', camera_params.exposure_time)  # set exposure, should be in us
         self.camera.setParameter('gain', camera_params.gain)
         self.camera.setParameter('blacklevel', camera_params.black_level)
-        self.compression = camera_params.compression
-        self.metadata['compression'] = camera_params.compression
+        if camera_params.compression is not None:  # Not to be replaced with exp_config
+            self.compression = camera_params.compression
+        self.metadata['compression'] = camera_params.compression if camera_params.compression is not None else self.compression
         self.metadata['gain'] = camera_params.gain
         self.metadata['black_level'] = camera_params.black_level
 
