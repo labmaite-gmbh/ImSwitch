@@ -170,7 +170,7 @@ class CameraWrapper(Camera):
                 loguru.logger.warning(f"Parameter {param} not valid - selected value {value}. {e}")
 
     def get_metadata(self):
-        return {"timestamp": datetime.datetime.now().strftime('%Y%m%d_%H%M%S'), "camera_metadata": self.metadata}
+        return {"timestamp": datetime.datetime.now().isoformat(timespec='milliseconds'), "camera_metadata": self.metadata}
 
     def capture(self):
         return self.camera.getLatestFrame(), self.get_metadata()
