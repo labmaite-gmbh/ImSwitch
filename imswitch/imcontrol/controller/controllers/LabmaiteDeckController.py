@@ -215,6 +215,32 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.update_list_in_widget()
         self._widget.sigScanInfoTextChanged.emit(f"Loaded {os.path.basename(os.environ['EXPERIMENT_JSON_PATH'])}")
         self._connect(self._widget.sigSliderValueChanged, self.value_light_changed)
+        self._start_microscope_api_server()
+
+    def _start_microscope_api_server(self):
+        """Start the microscope-api FastAPI server as a background thread, sharing this device."""
+        try:
+            import sys
+            _MICROSCOPE_API_PATH = r"C:\Users\hardw\Desktop\microscope-api"
+            if _MICROSCOPE_API_PATH not in sys.path:
+                sys.path.insert(0, _MICROSCOPE_API_PATH)
+
+            from microscope_api.device_init.device import MicroscopeDevice, set_microscope_device
+            from main import start_server_in_thread
+
+            api_device = MicroscopeDevice.from_existing_device(
+                device=self.exp_context.device,
+                exp_config=self.exp_config,
+                modules=MODULES,
+                storage_path=os.environ["STORAGE_PATH"],
+            )
+            set_microscope_device(api_device)
+            self._api_device = api_device  # keep reference to check is_busy from ImSwitch side
+            self._api_server_thread = start_server_in_thread(port=9523)
+            self.__logger.info("microscope-api server started on port 9523")
+        except Exception as e:
+            self.__logger.warning(f"Could not start microscope-api server: {e}")
+            self._api_device = None
 
     def init_device(self, home_on_start=False):
         cfg_raw = load_file(os.environ['DEVICE_JSON_PATH'])
@@ -330,6 +356,16 @@ class LabmaiteDeckController(LiveUpdatedController):
 
     def closeEvent(self):
         self.stop_scan()
+        # Block new API requests and cancel any in-flight scan before shutting down hardware
+        if getattr(self, '_api_device', None) is not None:
+            self._api_device.is_busy = True
+            if self._api_device.exp_context is not None:
+                try:
+                    self._api_device.exp_context.stop_experiment()
+                except Exception:
+                    pass
+            import time as _time
+            _time.sleep(1)
         self._widget.close()
         self.exp_context.device.shutdown()
 
@@ -1267,6 +1303,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         return self._widget.confirm_start_run()
 
     def start_scan(self):
+        if getattr(self, '_api_device', None) is not None and self._api_device.is_busy:
+            self._widget.sigScanInfoTextChanged.emit("API scan in progress — wait for it to finish.")
+            return
         if self._widget.ScanInfo.text() == "Unsaved changes.":
             if not self.confirm_start_run():
                 return
