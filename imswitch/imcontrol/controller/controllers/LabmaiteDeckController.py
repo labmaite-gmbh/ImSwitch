@@ -217,6 +217,22 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.sigSliderValueChanged, self.value_light_changed)
 
     def init_device(self, home_on_start=False):
+        # --- Architecture A: ImSwitch as a microscope_api client (opt-in) ---
+        # When MICROSCOPE_API_CLIENT is set, microscope_api owns the hardware and this
+        # controller drives it over HTTP via a ClientDevice proxy (live view comes from
+        # the RemoteCameraManager detector; select the btig_uc2_remote_imswitch setup).
+        # ON-RIG TODO: scans/autofocus/well-preview must be redirected to the API
+        # (self.api_client.run_scan/point_autofocus/take_well) instead of running a local
+        # ExperimentContext against the proxy. See docs/imswitch-api-integration-part2.md.
+        from imswitch.imcontrol.model.imswitch_api_integration import (
+            use_api_client, start_api, build_client_device)
+        if use_api_client():
+            base_url = start_api()
+            self._api_base_url = base_url
+            self.api_client, client_device = build_client_device(base_url, self.exp_config)
+            self.__logger.info(f"LabmaiteDeck running as microscope_api client at {base_url}")
+            return client_device
+        # --- standalone (ImSwitch owns hardware) path below, unchanged ---
         cfg_raw = load_file(os.environ['DEVICE_JSON_PATH'])
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR":
             from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
