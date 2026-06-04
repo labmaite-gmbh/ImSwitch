@@ -16,12 +16,12 @@ handover helper) are committed; the items below are the remaining wiring + valid
 - `LabmaiteDeckController.init_device` — opt-in branch: when `MICROSCOPE_API_CLIENT` is set, starts the API and returns a `ClientDevice` proxy instead of building the local `UC2Device`.
 
 ## Enabling client mode (on the rig)
-1. Ensure `microscope_api` is importable and configured to own the hardware standalone
-   (its own `MicroscopeDevice()` from `labmaite_config.json`, `DEBUG=2` real device).
-   Confirm `start_server_in_thread` is reachable — either put the microscope-api repo
-   root on `PYTHONPATH` (so `import main` works) or refactor `start_server_in_thread`
-   into the importable `microscope_api` package (preferred).
-2. `set MICROSCOPE_API_CLIENT=1` in the environment that launches ImSwitch.
+1. Ensure the `microscope_api` package is importable (microscope-api repo installed or
+   on `PYTHONPATH`). The server is started in-process via
+   `from microscope_api.server import start_server_in_thread` — no separate `main.py`
+   import needed. Configure `labmaite_config.json` with `DEBUG=2` (real device).
+2. Set `MICROSCOPE_API_CLIENT=1` and `DEVICE_JSON_PATH=<path/to/device.json>` in the
+   environment that launches ImSwitch.
 3. Select the **`btig_uc2_remote_imswitch`** setup in the ImSwitch setup picker.
 4. Launch ImSwitch. `init_device` starts the API, acquires control as `imswitch`, and
    returns the `ClientDevice` proxy; the `RemoteCameraManager` shows live view.
@@ -48,12 +48,38 @@ handover helper) are committed; the items below are the remaining wiring + valid
 - `_on_handover_toggled(handover)` calls `set_external_control`, updates button label/style, and toggles operator controls via `toggle_widgets`.
 
 ## Verification checklist (on the rig)
-- [ ] API boots and owns the camera+stage (no `gxipy`/serial double-open errors).
+
+### Startup
+- [ ] `MICROSCOPE_API_CLIENT=1` and `DEVICE_JSON_PATH` are set before launching ImSwitch.
+- [ ] API boots cleanly — no `gxipy`/serial double-open errors in the log.
+- [ ] `GET /health` returns `"OK"` at `http://127.0.0.1:9523/health`.
+- [ ] `GET /api/control/owner` shows `{"client_id": "imswitch"}` — control acquired on init.
+- [ ] `DEVICE_JSON_PATH` resolves; loguru shows no "Could not build local DeckManager" or "Could not read lights" warnings (if it does, fix the path).
+
+### Live view & camera
 - [ ] ImSwitch live view (napari) shows frames via `RemoteCameraManager` ← `/api/imaging/camera/stream`.
-- [ ] Operator jog/move/home/park/stop, light intensity, and single snapshot work through the proxy (stage actually moves; frame updates).
-- [ ] A scan / autofocus / well-preview runs **server-side** (after wiring item 2) with progress via webhooks; output lands under `STORAGE_PATH`.
-- [ ] Hand-over: operator clicks "Hand over"; ImSwitch controls disable; a separate client (`curl`/microfluidics) with its `X-Client-Id` acquires control and drives a move; state-changing calls from the wrong id get 423; reads (frames/status) still work; "Take back" reclaims.
-- [ ] Run `smoke_part1.py` (microscope-api) against the running API as a sanity check.
+- [ ] Adjusting exposure/gain/blacklevel in the ImSwitch camera panel pushes to `/api/imaging/camera/parameters` without error; confirm units match the rig.
+- [ ] Single snapshot (`PUT /api/imaging/camera/take_image`) saves a file under `STORAGE_PATH`.
+
+### Operator controls (proxy round-trips)
+- [ ] Jog / step buttons move the stage; `/api/stage/position` position updates.
+- [ ] Home (`PUT /api/stage/position/home`) and Park work without errors.
+- [ ] Stop (`PUT /api/stage/position/stop`) halts motion mid-move.
+- [ ] Light intensity slider calls `/api/lights/intensity`; LED brightness changes on the rig.
+
+### Server-side long-running flows
+- [ ] **Scan**: press Start in the Scan List Actions group; status label shows "Scan running via API…"; output directory appears under `STORAGE_PATH`; status updates to "Scan complete: <dir>" when done. Stop button calls `cancel_scan` and halts early if pressed mid-scan.
+- [ ] **Autofocus**: run autofocus from the autofocus dialog; `PUT /api/imaging/camera/point_autofocus` is called; stage moves to the returned `z`; status label confirms completion.
+- [ ] **Well preview**: open the Z-scan dialog with a slot/well selected; press Preview; `PUT /api/imaging/camera/take_well` is called with the correct slot, well, ROI offset, and z-params; output lands under `STORAGE_PATH`.
+
+### Hand-over / take-back
+- [ ] "Hand over" button is **visible** in the Scan Actions group when `MICROSCOPE_API_CLIENT=1`.
+- [ ] Click "Hand over": button turns red and reads "Take back"; operator controls (jog/scan/home/park) are hidden; status shows current owner.
+- [ ] While handed over: a second client (e.g. `curl -H "X-Client-Id: external" -X POST .../api/control/acquire`) acquires control and can drive a move; state-changing calls from `imswitch` client-id return 423; reads (frames, `/api/stage/position`) still work from any client.
+- [ ] Click "Take back": button returns orange; controls reappear; `imswitch` re-acquires ownership; external calls get 423.
+
+### Smoke test
+- [ ] Run `smoke_test.py` (microscope-api repo) against the running API as a final sanity check — all assertions pass.
 
 ## Notes / risks
 - Camera params: `RemoteCameraManager.setParameter` pushes exposure/gain/blacklevel together to `/api/imaging/camera/parameters` (the API requires all three). Confirm units match the rig.
