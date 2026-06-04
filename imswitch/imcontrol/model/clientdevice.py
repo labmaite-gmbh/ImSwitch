@@ -98,3 +98,7 @@ class ClientDevice:
             key: ClientLight(client, readable_name, value_range_max)
             for (key, readable_name, value_range_max) in (lights or [])
         }
+
+    def shutdown(self):
+        # hardware is owned by microscope_api; nothing to shut down here
+        pass

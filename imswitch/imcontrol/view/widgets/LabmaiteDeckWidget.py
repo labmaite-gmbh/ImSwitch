@@ -64,6 +64,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigAutofocusRun = QtCore.Signal()
     sigAutofocusStop = QtCore.Signal()
 
+    sigHandOverToggled = QtCore.Signal(bool)  # True = hand over to external; False = take back
+
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
         self.setMaximumWidth(800)
@@ -951,8 +953,17 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
 
+        self.HandOverButton = guitools.BetterPushButton('Hand over')
+        self.HandOverButton.setStyleSheet("background-color: orange; font-size: 12px")
+        self.HandOverButton.setFixedHeight(30)
+        self.HandOverButton.setMaximumWidth(100)
+        self.HandOverButton.setCheckable(True)
+        self.HandOverButton.setVisible(False)  # shown only in API client mode
+        self.HandOverButton.toggled.connect(self.sigHandOverToggled)
+
         exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
         exp_buttons_layout.addWidget(self.ScanStopButton, 1, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.HandOverButton, 2, 0, 1, 1)
 
         self.ScanActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)

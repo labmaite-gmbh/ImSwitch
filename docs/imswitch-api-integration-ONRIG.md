@@ -28,29 +28,24 @@ handover helper) are committed; the items below are the remaining wiring + valid
 
 ## Remaining wiring (do on the rig)
 
-### 1. Local deck geometry + light names (`imswitch_api_integration.py` TODOs)
-- `build_local_deck_manager(exp_config)`: instantiate `locai_app.impl.deck.sd_deck_manager.DeckManager` from `exp_config` and `load_labwares(exp_config.slots)` so deck/well math works client-side (no round-trips). Until done, deck rendering that relies on `device.stage.deck_manager` will be limited.
-- `lights_from_config(exp_config)`: return `[(key, readable_name, value_range_max), ...]` from the device config light sources so the widget light sliders map to the right names/ranges.
+### 1. Local deck geometry + light names (`imswitch_api_integration.py` TODOs) ✅ DONE
+- `build_local_deck_manager(exp_config)`: reads from `DEVICE_JSON_PATH`; returns None with a warning if unavailable.
+- `lights_from_config(exp_config)`: reads `CfgTlUpLed` from `DEVICE_JSON_PATH`; returns `[]` with a warning if unavailable.
+- Both functions gracefully degrade — verify on rig that `DEVICE_JSON_PATH` resolves correctly.
 
-### 2. Redirect scan / autofocus / well-preview to the API (the key B3 follow-up)
-Under client mode, do **not** run a local `ExperimentContext` against the proxy (it would
-drive the hardware over per-call HTTP in tight loops). Instead, in the controller flows
-that currently call `self.exp_context.run_experiment()` / the local `Autofocus` /
-`WellPreviewer`, branch on `use_api_client()` and call the API:
-- scan iteration → `self.api_client` POST `/api/imaging/scan/iteration` (see `MicroscopeApiClient`; add a `run_scan(...)` method mapping to it).
-- autofocus → `/api/imaging/camera/point_autofocus`.
-- well preview → `/api/imaging/camera/take_well`.
-Progress/ताcompletion arrives via the existing **webhooks** (microfluidics + ImSwitch can both subscribe). Keep the local path for non-client mode.
+### 2. Redirect scan / autofocus / well-preview to the API ✅ DONE
+`LabmaiteDeckController` now branches on `use_api_client()` in `start_scan`, `run_autofocus`, and `z_scan_preview`:
+- `start_scan` → calls `_start_scan_via_api()` → `self.api_client.run_scan(exp_config.dict())` in a daemon thread.
+- `stop_scan` → calls `self.api_client.cancel_scan()` in client mode.
+- `run_autofocus` → calls `_run_autofocus_via_api()` → `self.api_client.point_autofocus(params_dict)` in a daemon thread; moves stage to returned `z` on completion.
+- `z_scan_preview` → calls `_run_well_preview_via_api()` → `self.api_client.take_well(slot, well, rois, z_params)` using the selected slot/well and z-scan widget values.
+- `MicroscopeApiClient` has four new methods: `run_scan`, `cancel_scan`, `point_autofocus`, `take_well`.
+- `imswitch_api_integration.start_api` now imports `from microscope_api.server import start_server_in_thread` (resolves the old `main` import ambiguity).
 
-### 3. Handover toggle in `LabmaiteDeckWidget` (B4)
-Add a "Hand over to external control" / "Take back control" button. Wire its handler to:
-```python
-from imswitch.imcontrol.model.imswitch_api_integration import set_external_control
-set_external_control(self.api_client, handover=True)   # release -> external can acquire
-# ... and disable operator controls while handed over;
-set_external_control(self.api_client, handover=False)  # re-acquire on take-back
-```
-Reflect `self.api_client.owner()` in the UI. Disable jog/scan/light controls when not the owner.
+### 3. Handover toggle in `LabmaiteDeckWidget` ✅ DONE
+- `LabmaiteDeckWidget` has a new `HandOverButton` (checkable, orange/red) and `sigHandOverToggled` signal.
+- Button is hidden by default; shown only when `use_api_client()` is true (set in `connect_widget_buttons`).
+- `_on_handover_toggled(handover)` calls `set_external_control`, updates button label/style, and toggles operator controls via `toggle_widgets`.
 
 ## Verification checklist (on the rig)
 - [ ] API boots and owns the camera+stage (no `gxipy`/serial double-open errors).

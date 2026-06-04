@@ -103,3 +103,22 @@ class MicroscopeApiClient:
 
     def camera_metadata(self):
         return self._request("GET", "/api/imaging/camera/metadata")
+
+    # --- scan / autofocus / well-preview (server-side execution) ---
+    def run_scan(self, exp_config_dict, custom_parent_dir=None, experiment_dir_name=None):
+        return self._request("PUT", "/api/imaging/scan/iteration",
+                             json={"exp_config": exp_config_dict,
+                                   "custom_parent_dir": custom_parent_dir,
+                                   "experiment_dir_name": experiment_dir_name})
+
+    def cancel_scan(self):
+        return self._request("PUT", "/api/imaging/scan/iteration/cancel")
+
+    def point_autofocus(self, af_params_dict):
+        return self._request("PUT", "/api/imaging/camera/point_autofocus",
+                             json=af_params_dict)
+
+    def take_well(self, slot, well, rois, z_params_dict):
+        return self._request("PUT", "/api/imaging/camera/take_well",
+                             json={"slot": slot, "well": well,
+                                   "rois": rois, "z_params": z_params_dict})
