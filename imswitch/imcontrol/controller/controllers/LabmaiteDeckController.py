@@ -76,6 +76,9 @@ class RemoteLed:
         self._put('/api/lights/intensity',
                   json={'readable_name': self.config.readable_name, 'intensity': intensity})
         self.intensity = value
+        # Re-enable output if the scan left it disabled and the user is setting a non-zero value
+        if not self.is_enabled and value > getattr(self.config, 'value_range_min', 0):
+            self.set_enabled(True)
 
     def get_intensity(self):
         try:
