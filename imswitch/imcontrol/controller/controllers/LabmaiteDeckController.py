@@ -4,6 +4,7 @@ import os
 import threading
 import time
 from copy import deepcopy
+import requests
 
 import loguru
 import numpy as np
@@ -41,6 +42,150 @@ _homeAttr = "Home"
 _stopAttr = "Stop"
 _objectiveRadius = 21.8 / 2
 _objectiveRadius = 29.0 / 2  # Olympus
+
+
+class RemoteLed:
+    """Proxy LED that routes commands through the microscope-api HTTP endpoints.
+    Replaces the real TlUpLed when MICROSCOPE_API_CLIENT=1."""
+
+    def __init__(self, base_url: str, config):
+        self._base_url = base_url.rstrip('/')
+        self._session = requests.Session()
+        self.config = config
+        self.is_enabled = False
+        self.intensity = getattr(config, 'init_setpoint', 0.02)
+
+    def _put(self, path: str, **kwargs):
+        try:
+            self._session.put(f'{self._base_url}{path}', timeout=10, **kwargs)
+        except Exception as e:
+            import loguru
+            loguru.logger.warning(f'RemoteLed {path} failed: {e}')
+
+    def initialize(self, device):
+        pass
+
+    def set_enabled(self, enabled: bool):
+        route = '/api/lights/enable' if enabled else '/api/lights/disable'
+        self._put(route, json={'readable_name': self.config.readable_name, 'intensity': 0.0})
+        self.is_enabled = enabled
+
+    def set_intensity(self, value):
+        # value is in the same unit as config.value_range_max (Amperes for ThorLabs)
+        intensity = float(min(max(value / self.config.value_range_max, 0.0), 1.0))
+        self._put('/api/lights/intensity',
+                  json={'readable_name': self.config.readable_name, 'intensity': intensity})
+        self.intensity = value
+
+    def get_intensity(self):
+        try:
+            r = self._session.get(f'{self._base_url}/api/lights/intensities', timeout=5)
+            r.raise_for_status()
+            return r.json().get(self.config.readable_name, self.intensity)
+        except Exception:
+            return self.intensity
+
+    def disconnect(self):
+        self._session.close()
+
+    def shutdown(self):
+        self._session.close()
+
+
+class _RemoteAxisGroup:
+    """Stub for positioner.x_axis / y_axis / z_axis — routes individual-axis ops via HTTP."""
+    def __init__(self, stage: 'RemoteStage', axis: str):
+        self._stage = stage
+        self._axis = axis
+
+    def stop(self):
+        self._stage._put('/api/stage/position/stop')
+
+    def home_axis(self, axis: str = None):
+        self._stage._put('/api/stage/position/home', json={'axis': axis or self._axis})
+
+    def move_absolute(self, position):
+        """Move this single axis to an absolute position, preserving the other two axes."""
+        current = self._stage.position()
+        point = {'x': current.x, 'y': current.y, 'z': current.z}
+        point[self._axis.lower()] = float(position)
+        self._stage._put('/api/stage/position/move', json=point)
+
+    def wait_for_move_complete(self):
+        pass  # HTTP move calls block until complete
+
+
+class _RemotePositioner:
+    """Stub for positioner sub-object accessed as stage.positioner.*"""
+    def __init__(self, stage: 'RemoteStage'):
+        self.x_axis = _RemoteAxisGroup(stage, 'X')
+        self.y_axis = _RemoteAxisGroup(stage, 'Y')
+        self.z_axis = _RemoteAxisGroup(stage, 'Z')
+
+    def home_axis(self, axis: str):
+        self.x_axis._stage._put('/api/stage/position/home', json={'axis': axis})
+
+
+class RemoteStage:
+    """Proxy stage that routes all movement commands to the microscope-api over HTTP.
+    Replaces the real CollisionAvoidance stage when MICROSCOPE_API_CLIENT=1."""
+
+    def __init__(self, base_url: str, client_id: str, deck_manager):
+        self._base_url = base_url.rstrip('/')
+        self._session = requests.Session()
+        self._session.headers['X-Client-Id'] = client_id
+        self.deck_manager = deck_manager
+        self.positioner = _RemotePositioner(self)
+
+    def _get(self, path: str, **kwargs):
+        return self._session.get(f'{self._base_url}{path}', timeout=10, **kwargs)
+
+    def _put(self, path: str, **kwargs):
+        return self._session.put(f'{self._base_url}{path}', timeout=60, **kwargs)
+
+    def position(self) -> Point:
+        r = self._get('/api/stage/position')
+        r.raise_for_status()
+        d = r.json()
+        return Point(x=d['x'], y=d['y'], z=d['z'])
+
+    def move_absolute(self, point: Point):
+        self._put('/api/stage/position/move', json={'x': point.x, 'y': point.y, 'z': point.z})
+
+    def move_relative(self, point: Point):
+        self._put('/api/stage/position/shift', json={'x': point.x, 'y': point.y, 'z': point.z})
+
+    def move_from_well(self, slot: str, well: str, position: Point):
+        self._put('/api/stage/position/move_from_well',
+                  params={'slot': slot, 'well': well},
+                  json={'x': position.x, 'y': position.y, 'z': position.z})
+
+    def stop(self):
+        self._put('/api/stage/position/stop')
+
+    def home(self):
+        self._put('/api/stage/position/home', json={'axis': 'ALL'})
+
+    def park(self):
+        self._put('/api/stage/position/park')
+
+    def wait(self):
+        pass  # HTTP calls block until the move completes
+
+    def get_well_position(self, slot: str, well: str) -> Point:
+        return self.deck_manager.get_well_position(slot, well)
+
+    def parking_position(self) -> Point:
+        r = self._get('/api/stage/parking_position')
+        r.raise_for_status()
+        d = r.json()
+        return Point(x=d['x'], y=d['y'], z=d['z'])
+
+    def disconnect(self):
+        self._session.close()
+
+    def shutdown(self):
+        self._session.close()
 
 
 def launch_init_wizard():
@@ -230,7 +375,24 @@ class LabmaiteDeckController(LiveUpdatedController):
             device: BTIGDevice = create_device(cfg_device)
         else:
             raise ValueError(f"Unrecognized device {os.environ['DEVICE']}")
-        device.initialize()
+        if os.environ.get('MICROSCOPE_API_CLIENT') == '1' and os.environ['DEVICE'] == 'BTIG_A':
+            # microscope-api owns all hardware (LED, stage axes).
+            # Use a temp MockLed to satisfy component registration and deck init,
+            # then replace both LED and stage with HTTP proxies.
+            from locai_app.impl.btig_a import MockLed
+            led_config = device.light.config
+            mock_led = MockLed(led_config)
+            device.register_component(led_config.hw_id, mock_led)
+            device.register_component('stage', device.stage)
+            mock_led.initialize(device)
+            device.stage.deck_manager.initialize(device)  # loads deck_layout JSON
+            base_url = os.environ.get('MICROSCOPE_API_URL', 'http://127.0.0.1:9523')
+            client_id = os.environ.get('MICROSCOPE_API_CLIENT_ID', 'imswitch')
+            device.light = RemoteLed(base_url, led_config)
+            device.stage = RemoteStage(base_url, client_id, device.stage.deck_manager)
+            device.light_sources = {"led": device.light}
+        else:
+            device.initialize()
         device.load_labwares(self.exp_config.slots)
         start = time.time()
         imswitch_camera = self._master.detectorsManager._subManagers["WidefieldCamera"]
