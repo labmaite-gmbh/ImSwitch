@@ -245,6 +245,22 @@ class LabmaiteDeckController(LiveUpdatedController):
             self._api_device = None
 
     def init_device(self, home_on_start=False):
+        # --- Architecture A: ImSwitch as a microscope_api client (opt-in) ---
+        # When MICROSCOPE_API_CLIENT is set, microscope_api owns the hardware and this
+        # controller drives it over HTTP via a ClientDevice proxy (live view comes from
+        # the RemoteCameraManager detector; select the btig_uc2_remote_imswitch setup).
+        # ON-RIG TODO: scans/autofocus/well-preview must be redirected to the API
+        # (self.api_client.run_scan/point_autofocus/take_well) instead of running a local
+        # ExperimentContext against the proxy. See docs/imswitch-api-integration-part2.md.
+        from imswitch.imcontrol.model.imswitch_api_integration import (
+            use_api_client, start_api, build_client_device)
+        if use_api_client():
+            base_url = start_api()
+            self._api_base_url = base_url
+            self.api_client, client_device = build_client_device(base_url, self.exp_config)
+            self.__logger.info(f"LabmaiteDeck running as microscope_api client at {base_url}")
+            return client_device
+        # --- standalone (ImSwitch owns hardware) path below, unchanged ---
         cfg_raw = load_file(os.environ['DEVICE_JSON_PATH'])
         if os.environ['DEVICE'] == "UC2_INVESTIGATOR":
             from locai_app.impl.uc2_device import CfgDevice, UC2Device, create_device
@@ -388,7 +404,10 @@ class LabmaiteDeckController(LiveUpdatedController):
             import time as _time
             _time.sleep(1)
         self._widget.close()
-        self.exp_context.device.shutdown()
+        try:
+            self.exp_context.device.shutdown()
+        except AttributeError:
+            pass
 
     def load_scan_list_from_cfg(self, cfg: ExperimentConfig):
         deck_manager = self.exp_context.device.stage.deck_manager
@@ -1086,6 +1105,33 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            self._widget.HandOverButton.setVisible(True)
+            self._connect(self._widget.sigHandOverToggled, self._on_handover_toggled)
+
+    def _on_handover_toggled(self, handover: bool):
+        from imswitch.imcontrol.model.imswitch_api_integration import set_external_control
+        try:
+            result = set_external_control(self.api_client, handover=handover)
+            if handover:
+                self._widget.HandOverButton.setText("Take back")
+                self._widget.HandOverButton.setStyleSheet("background-color: red; font-size: 12px")
+                self._widget.sigScanInfoTextChanged.emit(
+                    f"Control handed over. Owner: {result}")
+                self.toggle_widgets(show=False)
+                self._widget.ScanStartButton.setEnabled(False)
+            else:
+                self._widget.HandOverButton.setText("Hand over")
+                self._widget.HandOverButton.setStyleSheet("background-color: orange; font-size: 12px")
+                self._widget.sigScanInfoTextChanged.emit(
+                    f"Control re-acquired. Owner: {result}")
+                self.toggle_widgets(show=True)
+                self._widget.ScanStartButton.setEnabled(True)
+        except Exception as e:
+            self.__logger.warning(f"Handover toggle failed: {e}")
+            self._widget.HandOverButton.setChecked(not handover)  # revert toggle
+            self._widget.sigScanInfoTextChanged.emit(f"Handover failed: {e}")
 
     def stop_autofocus(self):
         try:
@@ -1098,6 +1144,10 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.__logger.warning(f"No autofocus to stop. {e}")
 
     def run_autofocus(self, on_position_complete=None):
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            self._run_autofocus_via_api()
+            return
         on_position_complete = self._set_autofocus if on_position_complete is None else on_position_complete
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
@@ -1141,6 +1191,43 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.af_stop_button.setDisabled(False)
         self.__logger.info(f"Starting autofocus.")
         # widget buttons changes directly on click on front-end -> better signal use?
+
+    def _run_autofocus_via_api(self):
+        exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
+        af_params = exp.scan_params.autofocus_params
+        if af_params is None:
+            self.__logger.warning("No autofocus params configured; cannot run via API.")
+            return
+        af_values = self._widget.get_af_values()
+        params_dict = af_params.dict()
+        params_dict.update({
+            "z_start": af_values["z_start"],
+            "z_end": af_values["z_end"],
+            "z_step": af_values["z_step"],
+            "z_depth": af_values["z_depth"],
+        })
+
+        def run():
+            try:
+                self._widget.af_run_button.setDisabled(True)
+                self._widget.af_stop_button.setDisabled(False)
+                self._widget.sigScanInfoTextChanged.emit("Autofocus running via API...")
+                result = self.api_client.point_autofocus(params_dict)
+                self.__logger.info(f"Autofocus via API complete: {result}")
+                if result and "z" in result:
+                    p = self.exp_context.device.stage.position()
+                    from locai_app.generics import Point as _Point
+                    self.move(_Point(x=p.x, y=p.y, z=result["z"]))
+                    self.__logger.info(f"Moved to autofocus z={result['z']}")
+                self._widget.sigScanInfoTextChanged.emit("Autofocus complete.")
+            except Exception as e:
+                self.__logger.warning(f"Autofocus via API failed: {e}")
+                self._widget.sigScanInfoTextChanged.emit(f"Autofocus failed: {e}")
+            finally:
+                self._widget.af_run_button.setDisabled(False)
+                self._widget.af_stop_button.setDisabled(True)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def plot_plate_3d(self):
         def closest_point(points, target):
@@ -1311,6 +1398,10 @@ class LabmaiteDeckController(LiveUpdatedController):
             self.__logger.warning(f"No preview to stop. {e}")
 
     def z_scan_preview(self):
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            self._run_well_preview_via_api()
+            return
         z_end, z_start, z_step = self._widget.get_zscan_values()
 
         exp = ExperimentConfig.parse_file(self.exp_context.cfg_experiment_path)
@@ -1323,12 +1414,52 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.z_scan_stop_button.setDisabled(False)
         self.__logger.info(f"Starting preview.")
 
+    def _run_well_preview_via_api(self):
+        z_base, z_top, z_step = self._widget.get_zscan_values()
+        slot = str(self.selected_slot) if self.selected_slot is not None else "1"
+        well = self.selected_well if self.selected_well is not None else "A1"
+
+        try:
+            p = self.exp_context.device.stage.position()
+            dm = self.exp_context.device.stage.deck_manager
+            if dm is not None:
+                well_center = dm.get_well_position(slot, well)
+                roi_x = p.x - well_center.x
+                roi_y = p.y - well_center.y
+            else:
+                roi_x, roi_y = 0.0, 0.0
+        except Exception:
+            roi_x, roi_y = 0.0, 0.0
+
+        z_height = abs(z_top - z_base)
+        z_slices = max(1, int(round(z_height / z_step)) + 1) if z_step > 0 else 1
+        z_params = {"z_height": z_height, "z_slices": z_slices, "z_sep": z_step}
+        rois = [{"x": roi_x, "y": roi_y, "z": 0.0}]
+
+        def run():
+            try:
+                self._widget.z_scan_preview_button.setDisabled(True)
+                self._widget.z_scan_stop_button.setDisabled(False)
+                self._widget.sigScanInfoTextChanged.emit("Well preview running via API...")
+                result = self.api_client.take_well(slot, well, rois, z_params)
+                self.__logger.info(f"Well preview via API complete: {result}")
+                self._widget.sigScanInfoTextChanged.emit("Well preview complete.")
+            except Exception as e:
+                self.__logger.warning(f"Well preview via API failed: {e}")
+                self._widget.sigScanInfoTextChanged.emit(f"Well preview failed: {e}")
+            finally:
+                self._widget.z_scan_preview_button.setDisabled(False)
+                self._widget.z_scan_stop_button.setDisabled(True)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def confirm_start_run(self):
         return self._widget.confirm_start_run()
 
     def start_scan(self):
-        if getattr(self, '_api_device', None) is not None and self._api_device.is_busy:
-            self._widget.sigScanInfoTextChanged.emit("API scan in progress — wait for it to finish.")
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            self._start_scan_via_api()
             return
         if self._widget.ScanInfo.text() == "Unsaved changes.":
             if not self.confirm_start_run():
@@ -1346,7 +1477,42 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._widget.HandoverButton.setEnabled(False)
         self.hide_widgets()
 
+    def _start_scan_via_api(self):
+        if self._widget.ScanInfo.text() == "Unsaved changes.":
+            if not self.confirm_start_run():
+                return
+
+        def run():
+            try:
+                self._widget.sigScanInfoTextChanged.emit("Scan running via API...")
+                self._widget.ScanStartButton.setEnabled(False)
+                self._widget.ScanStopButton.setEnabled(True)
+                self.hide_widgets()
+                result = self.api_client.run_scan(
+                    self.exp_config.dict(),
+                    custom_parent_dir=os.environ.get("STORAGE_PATH"),
+                )
+                name = result.get("exp_dir_name", "") if result else ""
+                self._widget.sigScanInfoTextChanged.emit(f"Scan complete: {name}" if name else "Scan complete.")
+            except Exception as e:
+                self.__logger.warning(f"API scan failed: {e}")
+                self._widget.sigScanInfoTextChanged.emit(f"Scan failed: {e}")
+            finally:
+                self._widget.ScanStartButton.setEnabled(True)
+                self._widget.ScanStopButton.setEnabled(False)
+                self.show_widgets()
+
+        threading.Thread(target=run, daemon=True).start()
+
     def stop_scan(self):
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            try:
+                self.api_client.cancel_scan()
+                self._widget.sigScanInfoTextChanged.emit("Scan cancelled.")
+            except Exception as e:
+                self.__logger.warning(f"Cancel scan failed: {e}")
+            return
         if self.exp_context.state in [ExperimentState.RUNNING]:
             self.exp_context.stop_experiment()
             self._widget.HandoverButton.setEnabled(True)

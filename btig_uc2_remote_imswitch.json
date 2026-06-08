@@ -1,0 +1,56 @@
+{
+    "positioners": {
+        "ESP32Stage": {
+          "managerName": "MockPositionerManager",
+          "managerProperties": {
+          },
+          "axes": [
+            "X",
+            "Y",
+            "Z"
+          ],
+          "forScanning": true,
+          "forPositioning": true
+        }
+    },
+    "detectors": {
+        "WidefieldCamera": {
+            "analogChannel": null,
+            "digitalLine": null,
+            "managerName": "RemoteCameraManager",
+            "managerProperties": {
+                "base_url": "http://127.0.0.1:9523",
+                "client_id": "imswitch",
+                "cameraEffPixelsize": 0.45,
+                "image_width": 1000,
+                "image_height": 1000,
+                "pixelSizeUm": [1, 1, 1]
+            },
+            "forAcquisition": true,
+            "forFocusLock": true
+        }
+    },
+    "rois": {
+        "Full chip": {
+            "x": 600,
+            "y": 600,
+            "w": 1200,
+            "h": 1200
+        }
+    },
+    "webrtc": {},
+    "PixelCalibration": {},
+    "availableWidgets": [
+        "Settings",
+        "View",
+        "Recording",
+        "Image",
+        "LabmaiteDeck"
+    ],
+    "nonAvailableWidgets": [
+        "STORMRecon",
+        "DPC",
+        "FocusLock",
+        "HistoScan"
+    ]
+}
