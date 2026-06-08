@@ -194,6 +194,8 @@ class LabmaiteDeckController(LiveUpdatedController):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.__logger = initLogger(self, instanceName="DeckController")
+        self._api_base_url = None
+        self._client_id = 'imswitch'
         start = time.time()
         self.exp_config = self.load_experiment_config_from_json(os.environ['EXPERIMENT_JSON_PATH'])
         dev = self.init_device(home_on_start=False)
@@ -256,7 +258,26 @@ class LabmaiteDeckController(LiveUpdatedController):
             device: BTIGDevice = create_device(cfg_device)
         else:
             raise ValueError(f"Unrecognized device {os.environ['DEVICE']}")
-        device.initialize()
+        if os.environ.get('MICROSCOPE_API_CLIENT') == '1' and os.environ['DEVICE'] == 'BTIG_A':
+            # microscope-api owns all hardware (LED, stage axes).
+            # Use a temp MockLed to satisfy component registration and deck init,
+            # then replace both LED and stage with HTTP proxies.
+            from locai_app.impl.btig_a import MockLed
+            led_config = device.light.config
+            mock_led = MockLed(led_config)
+            device.register_component(led_config.hw_id, mock_led)
+            device.register_component('stage', device.stage)
+            mock_led.initialize(device)
+            device.stage.deck_manager.initialize(device)  # loads deck_layout JSON
+            base_url = os.environ.get('MICROSCOPE_API_URL', 'http://127.0.0.1:9523')
+            client_id = os.environ.get('MICROSCOPE_API_CLIENT_ID', 'imswitch')
+            self._api_base_url = base_url
+            self._client_id = client_id
+            device.light = RemoteLed(base_url, led_config)
+            device.stage = RemoteStage(base_url, client_id, device.stage.deck_manager)
+            device.light_sources = {"led": device.light}
+        else:
+            device.initialize()
         device.load_labwares(self.exp_config.slots)
         start = time.time()
         imswitch_camera = self._master.detectorsManager._subManagers["WidefieldCamera"]
@@ -1057,6 +1078,9 @@ class LabmaiteDeckController(LiveUpdatedController):
         self.connect_deck_slots()
         self._connect(self._widget.ScanStartButton.clicked, self.start_scan)
         self._connect(self._widget.ScanStopButton.clicked, self.stop_scan)
+        self._connect(self._widget.HandoverButton.clicked, self.handover)
+        self._connect(self._widget.AbortButton.clicked, self.abort_handover)
+        self._connect(self._widget.TakeBackButton.clicked, self.take_back_control)
         self._connect(self._widget.home_button.clicked, self.home)
         self._connect(self._widget.park_button.clicked, self.park)
         self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
@@ -1319,11 +1343,13 @@ class LabmaiteDeckController(LiveUpdatedController):
         thread_experiment.start()
         self._widget.ScanStartButton.setEnabled(False)
         self._widget.ScanStopButton.setEnabled(True)
+        self._widget.HandoverButton.setEnabled(False)
         self.hide_widgets()
 
     def stop_scan(self):
         if self.exp_context.state in [ExperimentState.RUNNING]:
             self.exp_context.stop_experiment()
+            self._widget.HandoverButton.setEnabled(True)
             self.show_widgets()
         else:
             print(f"No running experiment to stop.")
@@ -1332,6 +1358,50 @@ class LabmaiteDeckController(LiveUpdatedController):
     def experiment_finished(self):
         self._widget.ScanStartButton.setEnabled(True)
         self._widget.ScanStopButton.setEnabled(False)
+        self._widget.HandoverButton.setEnabled(True)
+        self.show_widgets()
+
+    def handover(self):
+        if self._api_base_url is None:
+            self.__logger.warning('handover: no API base URL configured (not in client mode)')
+            return
+        import requests
+        try:
+            requests.post(f'{self._api_base_url}/api/control/release', timeout=3)
+        except Exception as e:
+            self.__logger.warning(f'handover: release failed: {e}')
+        self._widget.ScanStartButton.setEnabled(False)
+        self._widget.ScanStopButton.setEnabled(False)
+        self._widget.HandoverButton.setEnabled(False)
+        self._widget.AbortButton.setVisible(True)
+        self._widget.TakeBackButton.setVisible(True)
+        self.hide_widgets()
+
+    def abort_handover(self):
+        try:
+            self.exp_context.device.stage.stop()
+        except Exception as e:
+            self.__logger.warning(f'abort_handover: stop failed: {e}')
+        self._reacquire_control()
+
+    def take_back_control(self):
+        self._reacquire_control()
+
+    def _reacquire_control(self):
+        if self._api_base_url is not None:
+            import requests
+            try:
+                requests.post(
+                    f'{self._api_base_url}/api/control/acquire',
+                    json={'client_id': self._client_id},
+                    timeout=3,
+                )
+            except Exception as e:
+                self.__logger.warning(f'_reacquire_control: acquire failed: {e}')
+        self._widget.AbortButton.setVisible(False)
+        self._widget.TakeBackButton.setVisible(False)
+        self._widget.ScanStartButton.setEnabled(True)
+        self._widget.HandoverButton.setEnabled(True)
         self.show_widgets()
 
     def hide_widgets(self):

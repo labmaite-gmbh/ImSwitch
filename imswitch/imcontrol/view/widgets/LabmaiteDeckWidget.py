@@ -64,6 +64,10 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigAutofocusRun = QtCore.Signal()
     sigAutofocusStop = QtCore.Signal()
 
+    sigHandover = QtCore.Signal()
+    sigAbort = QtCore.Signal()
+    sigTakeBack = QtCore.Signal()
+
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
         self.setMaximumWidth(800)
@@ -951,8 +955,31 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanStopButton.setEnabled(False)
         self.ScanStopButton.toggled.connect(self.sigScanStop)
 
+        self.HandoverButton = guitools.BetterPushButton('Hand Over')
+        self.HandoverButton.setStyleSheet("background-color: #b8660a; color: white; font-size: 14px")
+        self.HandoverButton.setFixedHeight(30)
+        self.HandoverButton.setMaximumWidth(100)
+        self.HandoverButton.setCheckable(False)
+
+        self.AbortButton = guitools.BetterPushButton('ABORT')
+        self.AbortButton.setStyleSheet("background-color: red; color: white; font-size: 14px; font-weight: bold")
+        self.AbortButton.setFixedHeight(30)
+        self.AbortButton.setMaximumWidth(100)
+        self.AbortButton.setCheckable(False)
+        self.AbortButton.setVisible(False)
+
+        self.TakeBackButton = guitools.BetterPushButton('Take Back')
+        self.TakeBackButton.setStyleSheet("background-color: #1a7a1a; color: white; font-size: 14px")
+        self.TakeBackButton.setFixedHeight(30)
+        self.TakeBackButton.setMaximumWidth(100)
+        self.TakeBackButton.setCheckable(False)
+        self.TakeBackButton.setVisible(False)
+
         exp_buttons_layout.addWidget(self.ScanStartButton, 0, 0, 1, 1)
         exp_buttons_layout.addWidget(self.ScanStopButton, 1, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.HandoverButton, 2, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.AbortButton, 3, 0, 1, 1)
+        exp_buttons_layout.addWidget(self.TakeBackButton, 4, 0, 1, 1)
 
         self.ScanActionsWidget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                              QtWidgets.QSizePolicy.Expanding)
