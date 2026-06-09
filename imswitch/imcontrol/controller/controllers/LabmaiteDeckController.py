@@ -220,7 +220,11 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._start_microscope_api_server()
 
     def _start_microscope_api_server(self):
-        """Start the microscope-api FastAPI server as a background thread, sharing this device."""
+        """Start the microscope-api FastAPI server as a background thread, sharing this device.
+        Skipped in client mode (MICROSCOPE_API_CLIENT=1) where the external server owns hardware."""
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client():
+            return
         try:
             import sys
             _MICROSCOPE_API_PATH = r"C:\Users\hardw\Desktop\microscope-api"
@@ -228,7 +232,7 @@ class LabmaiteDeckController(LiveUpdatedController):
                 sys.path.insert(0, _MICROSCOPE_API_PATH)
 
             from microscope_api.device_init.device import MicroscopeDevice, set_microscope_device
-            from main import start_server_in_thread
+            from microscope_api.server import start_server_in_thread
 
             api_device = MicroscopeDevice.from_existing_device(
                 device=self.exp_context.device,
@@ -1105,32 +1109,28 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._connect(self._widget.adjust_all_focus_button.clicked, self.adjust_all_focus)
         self.connect_wells()
         self.connect_go_to()
-        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
-        if use_api_client() and hasattr(self, 'api_client'):
-            self._widget.HandOverButton.setVisible(True)
-            self._connect(self._widget.sigHandOverToggled, self._on_handover_toggled)
 
     def _on_handover_toggled(self, handover: bool):
         from imswitch.imcontrol.model.imswitch_api_integration import set_external_control
         try:
             result = set_external_control(self.api_client, handover=handover)
             if handover:
-                self._widget.HandOverButton.setText("Take back")
-                self._widget.HandOverButton.setStyleSheet("background-color: red; font-size: 12px")
+                self._widget.HandoverButton.setText("Take back")
+                self._widget.HandoverButton.setStyleSheet("background-color: red; font-size: 12px")
                 self._widget.sigScanInfoTextChanged.emit(
                     f"Control handed over. Owner: {result}")
                 self.toggle_widgets(show=False)
                 self._widget.ScanStartButton.setEnabled(False)
             else:
-                self._widget.HandOverButton.setText("Hand over")
-                self._widget.HandOverButton.setStyleSheet("background-color: orange; font-size: 12px")
+                self._widget.HandoverButton.setText("Hand over")
+                self._widget.HandoverButton.setStyleSheet("background-color: orange; font-size: 12px")
                 self._widget.sigScanInfoTextChanged.emit(
                     f"Control re-acquired. Owner: {result}")
                 self.toggle_widgets(show=True)
                 self._widget.ScanStartButton.setEnabled(True)
         except Exception as e:
             self.__logger.warning(f"Handover toggle failed: {e}")
-            self._widget.HandOverButton.setChecked(not handover)  # revert toggle
+            self._widget.HandoverButton.setChecked(not handover)  # revert toggle
             self._widget.sigScanInfoTextChanged.emit(f"Handover failed: {e}")
 
     def stop_autofocus(self):
