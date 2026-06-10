@@ -24,21 +24,22 @@ def use_api_client() -> bool:
 def start_api(port: int = 9523, wait_s: float = 60.0) -> str:
     """Start microscope_api so it owns the hardware, and wait until it is healthy.
 
-    Returns the base URL. Two launch options (pick per deployment):
-      (a) in-process via microscope_api's start_server_in_thread (this function), OR
-      (b) a separate process started by the launcher before ImSwitch (preferred if you
-          want fully independent lifecycles) -- in that case skip this and just connect.
-
-    ON-RIG TODO: microscope_api's start_server_in_thread lives in its repo-root main.py.
-    Ensure that module is importable (microscope-api repo root on PYTHONPATH) or refactor
-    start_server_in_thread into the importable ``microscope_api`` package.
+    Returns the base URL. If an external server is already healthy on the port,
+    connects to it immediately without attempting to embed a second instance.
+    Otherwise starts an in-process server via microscope_api.server.start_server_in_thread.
     """
     base = f"http://127.0.0.1:{port}"
+    # If an external server is already running (e.g. launched by launch_all.bat),
+    # skip the embedded-server attempt entirely to avoid port-conflict shutdown errors.
+    try:
+        if requests.get(base + "/health", timeout=1.0).status_code == 200:
+            return base
+    except Exception:
+        pass
     try:
         from microscope_api.server import start_server_in_thread
         start_server_in_thread(port=port)
     except Exception as e:  # pragma: no cover - rig-only path
-        # If already running as a separate process this is fine; just wait for health.
         import loguru
         loguru.logger.warning(f"Could not start microscope_api in-process ({e!r}); "
                               f"assuming it runs as a separate process.")
