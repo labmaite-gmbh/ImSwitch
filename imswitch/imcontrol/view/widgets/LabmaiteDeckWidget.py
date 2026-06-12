@@ -68,6 +68,8 @@ class LabmaiteDeckWidget(NapariHybridWidget):
     sigAbort = QtCore.Signal()
     sigTakeBack = QtCore.Signal()
 
+    sigScanRunning = QtCore.Signal(bool)  # True=scan started, False=scan finished; thread-safe UI update
+
     def __post_init__(self):
         # super().__init__(*args, **kwargs)
         self.setMaximumWidth(800)
@@ -1008,10 +1010,27 @@ class LabmaiteDeckWidget(NapariHybridWidget):
         self.ScanInfo.setText(text)
         self.ScanInfo.setHidden(False)
 
+    def setScanRunning(self, running: bool):
+        self.ScanStartButton.setEnabled(not running)
+        self.ScanStopButton.setEnabled(running)
+        self.HandoverButton.setEnabled(not running)
+        visible = not running
+        self._positioner_widget.setVisible(visible)
+        self._wells_group_box.setVisible(visible)
+        self.home_button.setVisible(visible)
+        self.park_button.setVisible(visible)
+        self.goto_btn.setVisible(visible)
+        self.well_action_widget.setVisible(visible)
+        self.scan_list.context_menu_enabled = visible
+        if os.environ["APP"] == ("BCALL" or "ICARUS"):
+            self._z_scan_box.setVisible(visible)
+            self.adjust_all_focus_button.setVisible(visible)
+
     def init_experiment_info(self, options=(8, 0, 1, 1)):
         self.ScanInfo = QtWidgets.QLabel('')
         self.ScanInfo.setWordWrap(True)
         self.sigScanInfoTextChanged.connect(self.update_scan_info_text)
+        self.sigScanRunning.connect(self.setScanRunning)
         self.ScanInfo_widget = QtWidgets.QGroupBox("Scan Info")
         self.ScanInfo_widget.setMinimumWidth(200)
         ScanInfo_layout = QtWidgets.QHBoxLayout()

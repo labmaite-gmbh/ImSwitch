@@ -1482,31 +1482,63 @@ class LabmaiteDeckController(LiveUpdatedController):
             if not self.confirm_start_run():
                 return
 
+        self._api_stop_event = threading.Event()
+        stop_event = self._api_stop_event
+        n_scans = self.exp_config.scan_params.number_scans
+        interval_s = self.exp_config.scan_params.scan_interval_seconds
+
+        def poll_scan_done() -> bool:
+            """Poll until the server reports both scanning=False and busy=False. Returns True when done, False if stopped."""
+            while not stop_event.is_set():
+                try:
+                    status = self.api_client.scan_status()
+                    if not status.get("scanning", False) and not status.get("busy", False):
+                        return True
+                except Exception:
+                    return True
+                stop_event.wait(timeout=2)
+            return False
+
         def run():
+            last_result = None
             try:
                 self._widget.sigScanInfoTextChanged.emit("Scan running via API...")
-                self._widget.ScanStartButton.setEnabled(False)
-                self._widget.ScanStopButton.setEnabled(True)
-                self.hide_widgets()
-                result = self.api_client.run_scan(
-                    self.exp_config.dict(),
-                    custom_parent_dir=os.environ.get("STORAGE_PATH"),
-                )
-                name = result.get("exp_dir_name", "") if result else ""
-                self._widget.sigScanInfoTextChanged.emit(f"Scan complete: {name}" if name else "Scan complete.")
+                self._widget.sigScanRunning.emit(True)
+                for i in range(n_scans):
+                    if stop_event.is_set():
+                        break
+                    self._widget.sigScanInfoTextChanged.emit(
+                        f"Scan {i + 1}/{n_scans} running..." if n_scans > 1 else "Scan running via API...")
+                    last_result = self.api_client.run_scan(
+                        self.exp_config.dict(),
+                        custom_parent_dir=os.environ.get("STORAGE_PATH"),
+                    )
+                    # Block until the server finishes this timepoint
+                    if not poll_scan_done():
+                        break
+                    if i < n_scans - 1 and not stop_event.is_set():
+                        self._widget.sigScanInfoTextChanged.emit(
+                            f"Scan {i + 1}/{n_scans} done. Waiting {interval_s:.0f}s until next...")
+                        stop_event.wait(timeout=interval_s)
+                if not stop_event.is_set():
+                    name = last_result.get("exp_dir_name", "") if last_result else ""
+                    self._widget.sigScanInfoTextChanged.emit(
+                        f"Scan complete: {name}" if name else "Scan complete.")
+                else:
+                    self._widget.sigScanInfoTextChanged.emit("Scan stopped.")
             except Exception as e:
                 self.__logger.warning(f"API scan failed: {e}")
                 self._widget.sigScanInfoTextChanged.emit(f"Scan failed: {e}")
             finally:
-                self._widget.ScanStartButton.setEnabled(True)
-                self._widget.ScanStopButton.setEnabled(False)
-                self.show_widgets()
+                self._widget.sigScanRunning.emit(False)
 
         threading.Thread(target=run, daemon=True).start()
 
     def stop_scan(self):
         from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
         if use_api_client() and hasattr(self, 'api_client'):
+            if hasattr(self, '_api_stop_event'):
+                self._api_stop_event.set()
             try:
                 self.api_client.cancel_scan()
                 self._widget.sigScanInfoTextChanged.emit("Scan cancelled.")
