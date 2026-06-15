@@ -1485,15 +1485,25 @@ class LabmaiteDeckController(LiveUpdatedController):
         self._api_stop_event = threading.Event()
         stop_event = self._api_stop_event
         n_scans = self.exp_config.scan_params.number_scans
-        interval_s = self.exp_config.scan_params.scan_interval_seconds
 
         def poll_scan_done() -> bool:
-            """Poll until the server reports both scanning=False and busy=False. Returns True when done, False if stopped."""
+            """Poll until the server reports both scanning=False and busy=False.
+            Emits progress text when the server advances to a new timepoint.
+            Returns True when done, False if the stop event was set."""
+            last_reported = -1
             while not stop_event.is_set():
                 try:
                     status = self.api_client.scan_status()
                     if not status.get("scanning", False) and not status.get("busy", False):
                         return True
+                    if n_scans > 1:
+                        info = status.get("running_experiment_info") or {}
+                        scan_info = info.get("scan_info") or {}
+                        current = scan_info.get("current_scan_number", 0)
+                        if current != last_reported:
+                            last_reported = current
+                            self._widget.sigScanInfoTextChanged.emit(
+                                f"Timepoint {current + 1}/{n_scans} running...")
                 except Exception:
                     return True
                 stop_event.wait(timeout=2)
@@ -1502,24 +1512,15 @@ class LabmaiteDeckController(LiveUpdatedController):
         def run():
             last_result = None
             try:
-                self._widget.sigScanInfoTextChanged.emit("Scan running via API...")
+                self._widget.sigScanInfoTextChanged.emit(
+                    f"Starting {n_scans} timepoint scan..." if n_scans > 1
+                    else "Scan running via API...")
                 self._widget.sigScanRunning.emit(True)
-                for i in range(n_scans):
-                    if stop_event.is_set():
-                        break
-                    self._widget.sigScanInfoTextChanged.emit(
-                        f"Scan {i + 1}/{n_scans} running..." if n_scans > 1 else "Scan running via API...")
-                    last_result = self.api_client.run_scan(
-                        self.exp_config.dict(),
-                        custom_parent_dir=os.environ.get("STORAGE_PATH"),
-                    )
-                    # Block until the server finishes this timepoint
-                    if not poll_scan_done():
-                        break
-                    if i < n_scans - 1 and not stop_event.is_set():
-                        self._widget.sigScanInfoTextChanged.emit(
-                            f"Scan {i + 1}/{n_scans} done. Waiting {interval_s:.0f}s until next...")
-                        stop_event.wait(timeout=interval_s)
+                last_result = self.api_client.run_scan(
+                    self.exp_config.dict(),
+                    custom_parent_dir=os.environ.get("STORAGE_PATH"),
+                )
+                poll_scan_done()
                 if not stop_event.is_set():
                     name = last_result.get("exp_dir_name", "") if last_result else ""
                     self._widget.sigScanInfoTextChanged.emit(
