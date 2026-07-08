@@ -19,11 +19,11 @@ class MicroscopeApiClient:
         self.timeout = timeout
         self._session = session or requests.Session()
 
-    def _request(self, method, path, *, json=None, params=None, raw=False, stream=False):
+    def _request(self, method, path, *, json=None, params=None, raw=False, stream=False, timeout=None):
         url = self.base_url + path
         headers = {"X-Client-Id": self.client_id}
         resp = self._session.request(method, url, json=json, params=params,
-                                     headers=headers, timeout=self.timeout, stream=stream)
+                                     headers=headers, timeout=timeout if timeout is not None else self.timeout, stream=stream)
         if resp.status_code >= 400:
             try:
                 detail = resp.json().get("detail", "")
@@ -114,9 +114,12 @@ class MicroscopeApiClient:
     def cancel_scan(self):
         return self._request("PUT", "/api/imaging/scan/iteration/cancel")
 
+    def scan_status(self):
+        return self._request("GET", "/api/general/status")
+
     def point_autofocus(self, af_params_dict):
         return self._request("PUT", "/api/imaging/camera/point_autofocus",
-                             json=af_params_dict)
+                             json=af_params_dict, timeout=120)
 
     def take_well(self, slot, well, rois, z_params_dict):
         return self._request("PUT", "/api/imaging/camera/take_well",
