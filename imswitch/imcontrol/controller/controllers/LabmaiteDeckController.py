@@ -1205,6 +1205,7 @@ class LabmaiteDeckController(LiveUpdatedController):
             "z_end": af_values["z_end"],
             "z_step": af_values["z_step"],
             "z_depth": af_values["z_depth"],
+            "max_iterations": af_values["max_iterations"],
         })
 
         def run():

@@ -261,7 +261,7 @@ class LabmaiteDeckWidget(NapariHybridWidget):
                 "use_center": self.use_center,
                 "z_center": self.af_center_value,
                 "order": self.af_order,
-                "max_iterations": self.max_iterations
+                "max_iterations": self.af_max_iterations_widget.value()
                 }
 
     def toggle_af_options(self):
