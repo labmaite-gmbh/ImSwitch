@@ -1214,11 +1214,11 @@ class LabmaiteDeckController(LiveUpdatedController):
                 self._widget.sigScanInfoTextChanged.emit("Autofocus running via API...")
                 result = self.api_client.point_autofocus(params_dict)
                 self.__logger.info(f"Autofocus via API complete: {result}")
-                if result and "z" in result:
+                if result and "z_pos" in result:
                     p = self.exp_context.device.stage.position()
                     from locai_app.generics import Point as _Point
-                    self.move(_Point(x=p.x, y=p.y, z=result["z"]))
-                    self.__logger.info(f"Moved to autofocus z={result['z']}")
+                    self.move(_Point(x=p.x, y=p.y, z=result["z_pos"]))
+                    self.__logger.info(f"Moved to autofocus z={result['z_pos']}")
                 self._widget.sigScanInfoTextChanged.emit("Autofocus complete.")
             except Exception as e:
                 self.__logger.warning(f"Autofocus via API failed: {e}")
