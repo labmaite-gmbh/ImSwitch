@@ -199,6 +199,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         start = time.time()
         self.exp_config = self.load_experiment_config_from_json(os.environ['EXPERIMENT_JSON_PATH'])
         dev = self.init_device(home_on_start=False)
+        self._push_experiment_to_api()
         self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                              callback_info=self.update_scan_info)
         self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
@@ -313,6 +314,18 @@ class LabmaiteDeckController(LiveUpdatedController):
             p = device.stage.position()
             print(f"p={p}")
         return device
+
+    def _push_experiment_to_api(self):
+        """In client mode, push self.exp_config to microscope-api (PUT /api/general/experiment)
+        so its independently-configured process picks up the same experiment/labware ImSwitch
+        just loaded, instead of staying on its own EXPERIMENT_JSON_PATH default. Called both at
+        controller init and whenever the user opens a different experiment file."""
+        from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+        if use_api_client() and hasattr(self, 'api_client'):
+            try:
+                self.api_client.load_experiment(self.exp_config.json())
+            except Exception as e:
+                self.__logger.warning(f"Could not push experiment to microscope_api: {e}")
 
     def update_scan_info(self, dict_info):
         formated_info = self.format_info(dict_info)
@@ -482,12 +495,7 @@ class LabmaiteDeckController(LiveUpdatedController):
         try:
             self.exp_config = self.load_experiment_config_from_json(path)
             dev = self.init_device()
-            from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
-            if use_api_client() and hasattr(self, 'api_client'):
-                try:
-                    self.api_client.load_experiment(self.exp_config.json())
-                except Exception as e:
-                    self.__logger.warning(f"Could not push experiment to microscope_api: {e}")
+            self._push_experiment_to_api()
             self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                                  callback_info=self.update_scan_info)
             self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
