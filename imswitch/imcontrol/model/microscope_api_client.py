@@ -19,10 +19,10 @@ class MicroscopeApiClient:
         self.timeout = timeout
         self._session = session or requests.Session()
 
-    def _request(self, method, path, *, json=None, params=None, raw=False, stream=False, timeout=None):
+    def _request(self, method, path, *, json=None, params=None, files=None, raw=False, stream=False, timeout=None):
         url = self.base_url + path
         headers = {"X-Client-Id": self.client_id}
-        resp = self._session.request(method, url, json=json, params=params,
+        resp = self._session.request(method, url, json=json, params=params, files=files,
                                      headers=headers, timeout=timeout if timeout is not None else self.timeout, stream=stream)
         if resp.status_code >= 400:
             try:
@@ -103,6 +103,15 @@ class MicroscopeApiClient:
 
     def camera_metadata(self):
         return self._request("GET", "/api/imaging/camera/metadata")
+
+    # --- experiment ---
+    def load_experiment(self, exp_config_json: str):
+        """Push an experiment config to microscope_api (PUT /api/general/experiment), which
+        resets its DeckManager's labware cache and reloads from the on-disk labware JSON.
+        Call this whenever ImSwitch loads/reloads an experiment file, so edits to custom
+        labware definitions take effect on the server without a process restart."""
+        files = {"file": ("experiment.json", exp_config_json.encode("utf-8"), "application/json")}
+        return self._request("PUT", "/api/general/experiment", files=files)
 
     # --- scan / autofocus / well-preview (server-side execution) ---
     def run_scan(self, exp_config_dict, custom_parent_dir=None, experiment_dir_name=None):

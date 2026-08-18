@@ -37,9 +37,9 @@ class _Session:
         self.calls = []
         self._resp = resp or _Resp(204)
 
-    def request(self, method, url, json=None, params=None, headers=None, timeout=None, stream=False):
+    def request(self, method, url, json=None, params=None, files=None, headers=None, timeout=None, stream=False):
         self.calls.append({"method": method, "url": url, "json": json, "params": params,
-                           "headers": headers, "stream": stream})
+                           "files": files, "headers": headers, "stream": stream})
         return self._resp
 
 
@@ -95,6 +95,20 @@ def test_error_status_raises_with_detail():
     except MicroscopeApiError as e:
         assert e.status_code == 423
         assert "control held" in e.detail
+
+
+def test_load_experiment_uploads_json_as_file():
+    s = _Session(_Resp(204))
+    c = MicroscopeApiClient(session=s, client_id="imswitch")
+    c.load_experiment('{"slots": []}')
+    call = s.calls[-1]
+    assert call["method"] == "PUT"
+    assert call["url"] == "http://127.0.0.1:9523/api/general/experiment"
+    assert call["json"] is None
+    name, content, content_type = call["files"]["file"]
+    assert content == b'{"slots": []}'
+    assert content_type == "application/json"
+    assert call["headers"]["X-Client-Id"] == "imswitch"
 
 
 def test_stream_url_normalizes_trailing_slash():

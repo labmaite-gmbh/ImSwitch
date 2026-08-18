@@ -482,6 +482,12 @@ class LabmaiteDeckController(LiveUpdatedController):
         try:
             self.exp_config = self.load_experiment_config_from_json(path)
             dev = self.init_device()
+            from imswitch.imcontrol.model.imswitch_api_integration import use_api_client
+            if use_api_client() and hasattr(self, 'api_client'):
+                try:
+                    self.api_client.load_experiment(self.exp_config.json())
+                except Exception as e:
+                    self.__logger.warning(f"Could not push experiment to microscope_api: {e}")
             self.exp_context = ExperimentContext(dev, callback=self.experiment_finished,
                                                  callback_info=self.update_scan_info)
             self.exp_context.cfg_experiment_path = os.environ['EXPERIMENT_JSON_PATH']
